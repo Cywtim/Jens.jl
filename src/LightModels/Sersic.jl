@@ -1,0 +1,46 @@
+module SersicLight
+    # https://arxiv.org/pdf/1009.4713
+    # https://arxiv.org/pdf/2306.05454
+    include("../LensUtils.jl")
+
+    function ConfigCheck()
+
+    end
+
+    function SersicSpheric(x::AbstractArray, y::AbstractArray;
+          amp::Real=1., Rsersic::Real=0.5,
+        n::Real=0.5, xcentre::Real=0., ycentre::Real=0., bmin=1e-4)
+
+        #=
+        I(R) = amp \exp \left[ -b_n (R/R_{Sersic})^{\frac{1}{n}}\right]
+        where $b_n \approx 1.999n-0.327$
+        =#
+
+        b = max(1.999 * n - 0.327, bmin)
+
+        R = @. sqrt((x - xcentre)^2 + (y - ycentre)^2)
+
+        I = @. amp * exp( - b * ( R / Rsersic )^(1/n))
+
+        return I
+
+    end
+
+    function SersicElliptical(x::AbstractArray, y::AbstractArray;
+          amp::Real=1., Rsersic::Real=0.5, n::Real=0.5, varphi::Real=pi/3,
+           q::Real=0.9, xcentre::Real=0., ycentre::Real=0., bmin::Real=1e-4)
+        
+        b = @. 2 * n - 1/3 + 4/(405 * n) + 46/(25515 * n^2) + 131/(1148175*n^3) - 2194697/(30690717750*n^4) # for n>0.36
+        b = max(b, bmin)
+
+        A = @. (x-xcentre) * cos(varphi) + (y-ycentre) * sin(varphi)
+        B = @. -(x-xcentre) * sin(varphi) + (y-ycentre) * cos(varphi)
+        R = @. sqrt(A^2 + (B / ( 1 - q ))^2)
+
+        I = @. amp * exp( -b * ((R/Rsersic)^(1/n) - 1))
+
+        return I 
+    end
+
+
+end
