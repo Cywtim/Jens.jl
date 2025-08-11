@@ -1,0 +1,13 @@
+name = "Jens"
+uuid = "3a41821e-7a6f-4638-9405-d98e0d7482e1"
+authors = ["Cywtim"]
+version = "1.0.0-DEV"
+
+[compat]
+julia = "1.10.1"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
