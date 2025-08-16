@@ -2,10 +2,10 @@ module LensGenerator
 
     using AstroLib, NLsolve, Optim, LazyGrids 
 
-    export LensInstance
+    export LensInstance, SourceInstance
 
     include("LensUtils.jl")
-    LensModelnames = LensUtils.include_folder("LensModels") # load all models in LensModels
+    #LensModelnames = LensUtils.include_folder("LensModels") # load all models in LensModels
 
     mutable struct  LensInstance
 

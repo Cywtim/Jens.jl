@@ -1,8 +1,7 @@
 
 module LensFITS
 
-    using FITSIO, CFITSIO, AstroLib, Distributions
-    using Statistics, Random
+    using FITSIO, CFITSIO, AstroLib
 
     function FitsRead(Path, HDUs=falses)
 

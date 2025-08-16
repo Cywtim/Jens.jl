@@ -1,7 +1,6 @@
 
 module GaussianLight
 
-    using LazyGrids
 
     include("../LensUtils.jl")
     

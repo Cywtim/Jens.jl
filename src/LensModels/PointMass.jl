@@ -1,8 +1,6 @@
 
 module PointMass
 
-    using  LazyGrids
-
     include("../LensUtils.jl")
 
     

@@ -1,7 +1,6 @@
 
 module NIEkappa
 
-    using  LazyGrids
 
     include("../LensUtils.jl")
 
@@ -112,7 +111,6 @@ end
 
 module NIE
 
-    using  LazyGrids
     using  ..NIEkappa
 
     include("../LensUtils.jl")

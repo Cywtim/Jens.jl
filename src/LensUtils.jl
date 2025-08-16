@@ -9,7 +9,7 @@ module LensUtils
     export include_folder
     export  name2str
     
-    function LensInverse(M, e::Float64=1e-10)
+    function MatrixInverse(M::AbstractArray, e::Float64=1e-10)
     #=
     Inverse function: Calculate the inverse of a matrix or a number
 
@@ -23,8 +23,11 @@ module LensUtils
         end
     end
 
-    function LensGrid(;xl::Union{Float64, Array{Float64}}, yl::Union{Float64, Array{Float64}, Nothing}=nothing,
-         nx::Union{Int, Array{Int}}=100, ny::Union{Int, Array{Int}, Nothing}=nothing, CarOut::Bool=true)
+    function LensGrid(;xl::Union{Real, Array{Real}}, 
+                nx::Union{Int, Array{Int}}=100,
+            yl::Union{Real, Array{Real}, Nothing}=nothing,
+            ny::Union{Int, Array{Int}, Nothing}=nothing, 
+            CarOut::Bool=true)
     #=
     Grid function in the region of (xl[1], xl[2]) and (yl[1], yl[2]), with interval of nx-1 and ny-1.
 
@@ -33,12 +36,12 @@ module LensUtils
         nx:: Int
         ny:: Int
     =#
-        if yl .== nothing
-            yl .= xl
+        if yl === nothing
+            yl = xl
         end
 
-        if ny .== nothing
-            ny .= nx
+        if ny === nothing
+            ny = nx
         end
 
         if length(xl) == 1

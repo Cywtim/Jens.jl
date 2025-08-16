@@ -1,6 +1,6 @@
 module Json2Pdf
 
-    using JSON, PDFIO, CairoMakie
+    using JSON, PDFIO
 
     export JsonLoad, JsonToPdf
 

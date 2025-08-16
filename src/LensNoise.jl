@@ -1,7 +1,7 @@
 module LensNoise
 
     using FITSIO, AstroLib, Distributions, AstroImages
-    using Statistics, BackgroundMeshes, Random, LazyGrids
+    using Statistics, Random, LazyGrids
 
     export PoissonNoise, GaussianNoise, BackgroundNoise
 
