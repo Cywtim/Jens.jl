@@ -115,6 +115,7 @@ module LensUtils
     end
 
 
+    #=
     function Mesh2Array()
         
     end
@@ -122,6 +123,7 @@ module LensUtils
     function Array2Mesh()
 
     end
+    =#
 
     function Car2Pol(x, y; xc::Real=0., yc::Real=0.)
 

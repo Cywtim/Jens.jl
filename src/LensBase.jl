@@ -199,7 +199,7 @@ module LensBase
     end
 
     function LensCaustic(; LensModel::Module, LensKwargs::Dict, hperr::Float64=0.01, 
-            r_max::Float64=2., r_bins::Int=4000, theta_bins::Int=4000)
+            r_max::Float64=2., r_bins::Int=1000, theta_bins::Int=4000)
 
         r = range(0, r_max, r_bins)
         theta = range(0, 2 * pi, theta_bins)

@@ -9,7 +9,7 @@ module NFW
     num_interp = 1000
     interpol = false
 
-    function LensCheck(Rs, alpha_Rs, xcentre=0, ycentre=0)
+    function LensCheck(Rs, alpha_Rs, xcentre=0., ycentre=0.)
         
     end
 
@@ -32,17 +32,17 @@ module NFW
         e = 1e-6
         if r_rs < 1
             rrs = max(e, r_rs)
-            a = log(rrs / 2.0) + 1 / sqrt(1 - rrs^2) * acosh(1.0 / rrs)
+            a = @. log(rrs / 2.0) + 1 / sqrt(1 - rrs^2) * acosh(1.0 / rrs)
         elseif r_rs == 1
-            a = 1 + log(1.0 / 2.0)
+            a = @. 1 + log(1.0 / 2.0)
         else  # r_rs > 1:
-            a = log(r_rs / 2) + 1 / sqrt(r_rs^2 - 1) * acos(1.0 / r_rs)
+            a = @. log(r_rs / 2) + 1 / sqrt(r_rs^2 - 1) * acos(1.0 / r_rs)
         end
         
         return a
     end
 
-    function LensMass(x, y; Rs, alpha_Rs, xcentre=0, ycentre=0)
+    function LensMass(x, y; Rs, alpha_Rs, xcentre=0., ycentre=0.)
 
         rho0 = alpha2rho0(alpha_Rs, Rs)
         Rs = max(Rs, 1e-6)
@@ -68,16 +68,16 @@ module NFW
         c = 1e-6
         if r_rs < 1
             r_rs = max(c, r_rs)
-            a = log(r_rs / 2.0) + 1 / sqrt(1 - r_rs^2) * acosh(1.0 / r_rs)
+            a = @. log(r_rs / 2.0) + 1 / sqrt(1 - r_rs^2) * acosh(1.0 / r_rs)
         elseif r_rs == 1
-            a = 1 + np.log(1.0 / 2.0)
+            a = @. 1 + log(1.0 / 2.0)
         else  # r_rs > 1:
-            a = log(r_rs / 2) + 1 / sqrt(r_rs^2 - 1) * acos(1.0 / r_rs)
+            a = @. log(r_rs / 2) + 1 / sqrt(r_rs^2 - 1) * acos(1.0 / r_rs)
         end
     end
 
 
-    function LensDerivative(x, y; Rs, alpha_Rs, xcentre=0, ycentre=0)
+    function LensDerivative(x, y; Rs, alpha_Rs, xcentre=0., ycentre=0.)
 
         rho0 = alpha2rho0(alpha_Rs, Rs)
         Rs = max(Rs, 1e-6)
@@ -94,7 +94,7 @@ module NFW
 
     end
 
-    function kappa(x, y, Rs, rho0, xcentre=0, ycentre=0)
+    function kappa(x, y, Rs, rho0, xcentre=0., ycentre=0.)
         xsh = @. x - xcentre
         ysh = @. y - ycentre
         R = @. sqrt(xsh^2+ysh^2)
@@ -104,7 +104,7 @@ module NFW
         return kappa
     end
 
-    function gamma(x, y, R, Rs, rho0, xcentre=0, ycentre=0)
+    function gamma(x, y, R, Rs, rho0, xcentre=0., ycentre=0.)
 
         c = 1e-8
         R = max.(R, c)
@@ -135,7 +135,7 @@ module NFW
     end
 
 
-    function LenHessian(x, y; Rs, alpha_Rs, xcentre=0, ycentre=0)
+    function LenHessian(x, y; Rs, alpha_Rs, xcentre=0., ycentre=0.)
 
         rho0 = alpha2rho0(alpha_Rs, Rs)
         Rs = max(Rs, 1e-6)
@@ -154,35 +154,5 @@ module NFW
         return f_xx, f_xy, f_yy
  
     end
-
-end
-
-
-module NFWe
-
-    using ..NFW
-    include("../LensUtils.jl")
-
-    function LensMass(x, y; Rs, alpha_Rs, e1, e2, xcentre=0, ycentre=0)
-
-        xsh, ysh = LensUtils.EllipticalDistortion(x, y; e1, e2, xcentre, ycentre)
-        f = NFW.LensMass(xsh, ysh; Rs, alpha_Rs, xcentre=0, ycentre=0)
-        return f
-    end
-
-    function LensDerivative(x, y; Rs, alpha_Rs, e1, e2, xcentre=0, ycentre=0)
-
-        xsh, ysh = LensUtils.EllipticalDistortion(x, y; e1, e2, xcentre, ycentre)
-        f_x, f_y = NFW.LensDerivative(xsh, ysh; Rs, alpha_Rs, xcentre=0, ycentre=0)
-        return f_x, f_y
-    end
-
-    function LenHessian(x, y; Rs, alpha_Rs, e1, e2, xcentre=0, ycentre=0)
-
-        xsh, ysh = LensUtils.EllipticalDistortion(x, y; e1, e2, xcentre, ycentre)
-        f_xx, f_xy, f_yy = NFW.LenHessian(xsh, ysh; Rs, alpha_Rs, xcentre=0, ycentre=0)
-        return f_xx, f_xy, f_yy
-    end
-
 
 end
