@@ -47,7 +47,6 @@ module LensBase
       beta_y = @. yg - alpha_y
 
       return beta_x, beta_y
-
     end
 
     function LensMagnificationR(thetax::Union{LazyGrids.GridSL, Array{Any, 2}},
@@ -116,10 +115,11 @@ module LensBase
      end
 
 
-    function LensRayShooting(thetax::Union{LazyGrids.GridSL, Matrix{Float64}},
-         thetay::Union{LazyGrids.GridSL, Matrix{Float64}};
+    function LensRayShooting(thetax::AbstractArray,
+         thetay::AbstractArray;
           LensModel::Module, LensKwargs::Dict,
-             SourceProfile::Function, SourceKwargs::Dict)
+             SourceProfile::Function,
+                SourceKwargs::Dict)
 
         alphax, alphay = LensModel.LensDerivative(thetax, thetay; LensKwargs...)
         betax = thetax .- alphax
@@ -137,38 +137,40 @@ module LensBase
     end
 
     function MultiLensRayShooting(
-      thetax::Union{LazyGrids.GridSL, Matrix{Float64}},
-        thetay::Union{LazyGrids.GridSL, Matrix{Float64}};
-          LensModel::Union{Module, Vector{Module}},
-            LensKwargs::Vector{Dict{Symbol, Float64}},
-              SourceProfile::Function, SourceKwargs::Dict)
+      thetax::AbstractArray,
+        thetay::AbstractArray;
+          LensModels::Union{Module, Vector{Module}},
+            LensKwargs::Union{Dict, Vector{Dict}},)
 
-        xl = Union{LazyGrids.GridSL, Matrix{Float64}}[thetax]
-        yl = Union{LazyGrids.GridSL, Matrix{Float64}}[thetay]
+        #xl = Union{LazyGrids.GridSL, Matrix{Float64}}[thetax]
+        #yl = Union{LazyGrids.GridSL, Matrix{Float64}}[thetay]
           
-        len = length(LensKwargs)
 
-        if typeof(LensModel) == Module
+        if typeof(LensModels) == Module
 
-          for i in 1:len
-            ax, ay = LensModel.LensDerivative(xl[i], yl[i]; LensKwargs[i]...)
-            push!(xl, xl[i] .- ax)
-            push!(yl, yl[i] .- ay)
-          end
+          alphax, alphay = LensModel.LensDerivative(thetax, thetay; LensKwargs...)
+          betax = thetax .- alphax
+          betay = thetay .- alphay
+
+          light = SourceProfile(betax, betay; SourceKwargs...)
     
           # return Vector{Union{GridSL, Matrix{Float64}}}
-          return xl, yl
+          return light
 
         elseif typeof(LensModel) == Vector{Module}
 
+          len = length(LensKwargs)
+          ax = thetax
+          ay = thetay
+
           for i in 1:len
-            ax, ay = LensModel[i].LensDerivative(xl[i], yl[i]; LensKwargs[i]...)
-            push!(xl, xl[i] .- ax)
-            push!(yl, yl[i] .- ay)
+            ax, ay = LensModel[i].LensDerivative(ax, ay; LensKwargs[i]...)
           end
 
+          light = SourceProfile(betax, betay; SourceKwargs...)
+
           # return Vector{Union{GridSL, Matrix{Float64}}}
-          return xl, yl
+          return light
         
         else
 

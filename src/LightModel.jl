@@ -5,7 +5,7 @@ module LightModel
     # including Lens models
     include("LightModels/ExponentialLight.jl")
     include("LightModels/GaussianLight.jl")
-    include("LightModels/Sersic.jl")
+    include("LightModels/SersicLight.jl")
 
 
 end

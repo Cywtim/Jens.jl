@@ -15,7 +15,7 @@ module NIEkappa
         end
     end
 
-    function LensMass(xg::AbstractArray, yg::AbstractArray;
+    function LensPotential(xg::AbstractArray, yg::AbstractArray;
           b::Real=1.5, s::Real=0.1, q::Real=0.8,
             varphi::Real=pi/6, xcentre::Real=0., ycentre::Real=0.)
         #=

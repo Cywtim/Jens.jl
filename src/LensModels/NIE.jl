@@ -25,7 +25,7 @@ module NIE
         return Dict(:b=>b, :s=>s, :q=>q, :varphi=>varphi)
     end
 
-    function LensMass(xg::AbstractArray, yg::AbstractArray;
+    function LensPotential(xg::AbstractArray, yg::AbstractArray;
              theta_E::Real, s_scale::Real, e1::Real, e2::Real,
                 xcentre::Real=0., ycentre::Real=0.)
         #=
@@ -40,7 +40,7 @@ module NIE
 
         para_ma = Main2MajorAxes(theta_E, s_scale, e1, e2)
 
-        f = NIEkappa.LensMass(xg, yg; xcentre=xcentre, ycentre=ycentre, para_ma...)
+        f = NIEkappa.LensPotential(xg, yg; xcentre=xcentre, ycentre=ycentre, para_ma...)
         
         return f
 

@@ -3,10 +3,10 @@ module NFWE
     include("./NFW.jl")
     include("../LensUtils.jl")
 
-    function LensMass(x, y; Rs, alpha_Rs, e1, e2, xcentre=0., ycentre=0.)
+    function LensPotential(x, y; Rs, alpha_Rs, e1, e2, xcentre=0., ycentre=0.)
 
         xsh, ysh = LensUtils.EllipticalDistortion(x, y; e1, e2, xcentre, ycentre)
-        f = NFW.LensMass(xsh, ysh; Rs, alpha_Rs, xcentre=0., ycentre=0.)
+        f = NFW.LensPotential(xsh, ysh; Rs, alpha_Rs, xcentre=0., ycentre=0.)
         return f
     end
 

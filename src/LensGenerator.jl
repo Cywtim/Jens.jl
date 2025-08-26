@@ -1,30 +1,61 @@
 module LensGenerator
 
-    using AstroLib, NLsolve, Optim, LazyGrids 
+    using AstroLib, NLsolve, Optim, LazyGrids, Cosmology
+    using Cosmology:AbstractCosmology as AbstractCosmology
 
     export LensInstance, SourceInstance
 
     include("LensUtils.jl")
     #LensModelnames = LensUtils.include_folder("LensModels") # load all models in LensModels
+    
+    #bkg_noise::Float64 # background noise
+    #exp_time::Float64 # expsure time
 
-    mutable struct  LensInstance
-
-        num::Int # Size of the lens image
-        deltap::Float64  # pixel size of the image
-        redshift::Float64 # redshift of lens
-        bkg_noise::Float64 # background noise
-        exp_time::Float64 # expsure time
+    struct SingleLensInstance
+        redshift::Union{Float64, Nothing} # redshift of lens
+        cosmology::Union{AbstractCosmology, Nothing}
         LensModels::Dict # Lens model dict {model=>params}
         LightModels::Dict # Source model dict {model=>params}
         LensPlanes::Dict # Lens plane dict, start with image plane, {back=>(x1,y1),fore=>(x2,y2)}
         #------------------------Constructor------------------------#
         #Main Constructor
-        function LensInstance(;num::Int=50, deltap::Float64=0.09,
-            bkg_noise::Float64=0.0, exp_time::Float64=1.,
+        function SingleLensInstance(;redshift::Float64, cosmology::AbstractCosmology,
             LensModels::Dict=Dict(), LightModels::Dict=Dict(), 
             LensPlanes::Dict=Dict())
             
-            return new(num, deltap, bkg_noise, exp_time, 
+            return new(redshift, cosmology,
+            LensModels, LightModels, LensPlanes)
+        end
+
+        #Quick Constructor
+        function SingleLensInstance(;LensModels::Dict=Dict(), 
+            LightModels::Dict=Dict(), LensPlanes::Dict=Dict())
+            
+            redshift = nothing
+            cosmology = nothing
+
+            return new(redshift, cosmology,
+            LensModels, LightModels, LensPlanes)
+        end
+
+
+    end
+
+
+    mutable struct  LensInstance
+
+        redshift::Float64 # redshift of lens
+        cosmology::AbstractCosmology
+        LensModels::Dict # Lens model dict {model=>params}
+        LightModels::Dict # Source model dict {model=>params}
+        LensPlanes::Dict # Lens plane dict, start with image plane, {back=>(x1,y1),fore=>(x2,y2)}
+        #------------------------Constructor------------------------#
+        #Main Constructor
+        function LensInstance(;redshift::Float64, cosmology::AbstractCosmology,
+            LensModels::Dict=Dict(), LightModels::Dict=Dict(), 
+            LensPlanes::Dict=Dict())
+            
+            return new(redshift, cosmology,
             LensModels, LightModels, LensPlanes)
         end
     

@@ -11,12 +11,7 @@ module PointSource
     
     function PS(amp::Real=1., xcentre::Real=0., ycentre::Real=0.,)
 
-
-        b = max(1.999  - 0.327, bmin)
-
-        R = @. sqrt((x - xcentre)^2 + (y - ycentre)^2)
-
-        I = @. amp * exp( - b * ( R / Rsersic ))
+        
 
         return I
 

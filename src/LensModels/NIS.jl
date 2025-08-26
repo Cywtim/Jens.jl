@@ -13,7 +13,7 @@ module NIS
     end
 
 
-    function LensMass(xg , yg; theta_E::Float64, s::Float64, xcentre::Float64=0., ycentre::Float64=0.)
+    function LensPotential(xg , yg; theta_E::Float64, s::Float64, xcentre::Float64=0., ycentre::Float64=0.)
         #=
             The mass profile for singular isothermal ellipsoid (SIE)
 

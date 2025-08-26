@@ -10,8 +10,9 @@ module LensTuring
     include("../LensUtils.jl")
     include("../LensBase.jl")
     
+    
 
-    function FitModel()
+    @model function FitModel(; lens)
 
         
 

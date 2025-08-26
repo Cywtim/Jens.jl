@@ -1,9 +1,7 @@
 module LensCosmo
     using AstroLib, Cosmology
-
-    function CosmoModel(cosmo; OmM::Float64=0.3, Om0::Float64=0.7, OmK::Float64=0.0, h::Float64=0.7)
-        
-    end
+    #= https://doi.org/10.1051/0004-6361/201424881 =#
+    
 
     function ComovingDistance()
         

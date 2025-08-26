@@ -13,7 +13,7 @@ module SIE
         end
     end
 
-    function  LensMass(xg::AbstractArray, yg::AbstractArray;
+    function  LensPotential(xg::AbstractArray, yg::AbstractArray;
          b::Real, q::Real, s::Real=1e-4, xcentre::Real=0., ycentre::Real=0.)
         #=
             The mass profile for singular isothermal ellipsoid (SIE)

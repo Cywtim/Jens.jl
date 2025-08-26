@@ -13,7 +13,7 @@ module Shear
         end
     end
 
-    function LensMass(x::AbstractArray, y::AbstractArray; gamma1::Real, gamma2::Real, xcentre::Real=0.0, ycentre::Real=0.0)
+    function LensPotential(x::AbstractArray, y::AbstractArray; gamma1::Real, gamma2::Real, xcentre::Real=0.0, ycentre::Real=0.0)
         
         xsh = x .- xcentre
         ysh = y .- ycentre

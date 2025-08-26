@@ -42,7 +42,7 @@ module NFW
         return a
     end
 
-    function LensMass(x, y; Rs, alpha_Rs, xcentre=0., ycentre=0.)
+    function LensPotential(x, y; Rs, alpha_Rs, xcentre=0., ycentre=0.)
 
         rho0 = alpha2rho0(alpha_Rs, Rs)
         Rs = max(Rs, 1e-6)

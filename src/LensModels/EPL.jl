@@ -51,7 +51,7 @@ module EPL
         return alpha_x, alpha_y
     end
 
-    function  LensMass(xg::AbstractArray, yg::AbstractArray; theta_E::Real, gamma::Real,
+    function  LensPotential(xg::AbstractArray, yg::AbstractArray; theta_E::Real, gamma::Real,
         e1::Real, e2::Real, xcentre::Real=0., ycentre::Real=0.)
 
         b, t, q, varphi = Main2MajorAxes(theta_E::Real, gamma::Real,

@@ -17,7 +17,7 @@ module PointMass
     end
 
     # array like input
-    function LensMass(xg::AbstractArray, yg::AbstractArray;
+    function LensPotential(xg::AbstractArray, yg::AbstractArray;
         theta_E=.5, xcentre=0., ycentre=0.)
 
         xsh = xg .- xcentre
