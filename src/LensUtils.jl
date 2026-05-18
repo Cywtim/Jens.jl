@@ -1,263 +1,266 @@
 module LensUtils
 
-    using LinearAlgebra, LazyGrids
+    using LinearAlgebra
 
     export  LensGrid, LensPolGrid, LensInverse, LensRotation
-    export Pol2Car, Car2Pol
-    export e2phiq, phiq2e
-    export PoissonNoise, GaussianNoise, BackgroundNoise
-    export include_folder
+    export  Pol2Car, Car2Pol
+    export  e2phiq, phiq2e
+    export  ShearPol2Car, ShearCar2Pol
+    export  EllipticalDistortion
+    export  PoissonNoise, GaussianNoise, BackgroundNoise
+    export  include_folder
     export  name2str
-    
-    function MatrixInverse(M::AbstractArray, e::Float64=1e-10)
-    #=
-    Inverse function: Calculate the inverse of a matrix or a number
 
-        M:: Matrix or Number
-        e:: err value, default 1e-10
-    =#
-        try
+    # ═══════════════════════════════════════════════════════════════
+    #  1. MATRIX INVERSE (using rcond check instead of try/catch)
+    # ═══════════════════════════════════════════════════════════════
+
+    """
+        MatrixInverse(M, e=1e-10)
+
+    Safe inverse: if M is singular (rcond ≤ e), regularise with M + e·I.
+    """
+    function MatrixInverse(M::AbstractMatrix{T}, e::Float64=1e-10) where T
+        if rcond(M) > eps(real(T))^(2/3)
             return inv(M)
-        catch error
+        else
             return inv(M + e * I)
         end
     end
 
-    function LensGrid(;xl::Union{Real, Array{Real}}, 
-                nx::Union{Int, Array{Int}}=100,
-            yl::Union{Real, Array{Real}, Nothing}=nothing,
-            ny::Union{Int, Array{Int}, Nothing}=nothing, 
-            CarOut::Bool=true)
-    #=
-    Grid function in the region of (xl[1], xl[2]) and (yl[1], yl[2]), with interval of nx-1 and ny-1.
+    # ═══════════════════════════════════════════════════════════════
+    #  2. COORDINATE GRIDS (lazy 1D vectors → GPU/threading ready)
+    # ═══════════════════════════════════════════════════════════════
 
-        xl:: Int or 1D-Array
-        yl:: Int or 1D-Array
-        nx:: Int
-        ny:: Int
-    =#
+    """
+        LensGrid(; xl, nx=100, yl=nothing, ny=nothing, CarOut=true)
+
+    Return 2D Cartesian or polar grid on [-xl,xl]×[-yl,yl] as Matrices.
+    """
+    function LensGrid(; xl, nx=100, yl=nothing, ny=nothing, CarOut=true)
         if yl === nothing
             yl = xl
         end
-
         if ny === nothing
             ny = nx
         end
-
-        if length(xl) == 1
-            xg = range(-xl, xl, nx)
-            yg = range(-yl, yl, ny)
-
-        elseif  length(xl) == 2
-            xg = range(xl[1], xl[2], nx)
-            yg = range(yl[1], yl[2], ny)
-        else
-            println("Wrong size of x,y ranges.")
-            return
-        end
+        xg = _build_range(xl, nx)
+        yg = _build_range(yl, ny)
         if CarOut
-            return ndgrid(xg, yg)
+            return ndgrid(collect(xg), collect(yg))
         else
-            return Car2Pol(xg, yg)
+            r, φ = Car2Pol(ndgrid(collect(xg), collect(yg))...)
+            return r, φ
         end
-        
     end
 
-    function LensPolGrid(;rl::Union{Float64, Array{Float64}}, thetal::Union{Float64, Array{Float64}, Nothing}=2*pi,
-        nr::Union{Int, Array{Int}}=100, ntheta::Union{Int, Array{Int}}=100, Polout::Bool=true)
-        #=
-        Grid function in the region of (xl[1], xl[2]) and (yl[1], yl[2]), with interval of nx-1 and ny-1.
-    
-            xl:: Int or 1D-Array
-            yl:: Int or 1D-Array
-            nx:: Int
-            ny:: Int
-        =#
-    
-        if length(rl) == 1
-            rg = range(0, xl, nx)
+    """
+        LensPolGrid(; rl, thetal=2π, nr=100, ntheta=100, Polout=true)
 
-        elseif  length(rl) == 2
-            rg = range(rl[1], rl[2], nr)
-        else
-            println("Wrong size of r ranges.")
-            return
-        end
-
-        if length(thetal) == 1
-            rg = range(0, thetal, ntheta)
-
-        elseif  length(rl) == 2
-            thetag = range(thetal[1], thetal[2], ntheta)
-        else
-            println("Wrong size of theta ranges.")
-            return
-        end
-        
+    Return a polar grid in either polar or Cartesian output.
+    """
+    function LensPolGrid(; rl, thetal=2π, nr=100, ntheta=100, Polout=true)
+        rg = _build_range(rl, nr)
+        θg = range(0, thetal; length=ntheta)
         if Polout
-            return ndgrid(rg, thteag)
+            return ndgrid(collect(rg), collect(θg))
         else
-            return Pol2Car(rg, thetag)
+            R, Θ = ndgrid(collect(rg), collect(θg))
+            return Pol2Car(R, Θ)
         end
     end
 
+    # Internal: build a 1D range from scalar (asymmetric) or 2-element array
+    _build_range(x::Real, n::Int) = range(-x, x; length=n)
+    _build_range(x::AbstractVector, n::Int) = range(x[1], x[2]; length=n)
 
+    """
+        ndgrid(x, y)
+
+    Build 2D grid matrices from 1D vectors (like MATLAB's ndgrid).
+    """
+    function ndgrid(x::AbstractVector{T}, y::AbstractVector{T}) where T
+        nx, ny = length(x), length(y)
+        X = [x[i] for i in 1:nx, j in 1:ny]
+        Y = [y[j] for i in 1:nx, j in 1:ny]
+        return X, Y
+    end
+
+    # ═══════════════════════════════════════════════════════════════
+    #  3. ROTATION
+    # ═══════════════════════════════════════════════════════════════
+
+    """
+        LensRotation(xg, yg, varphi)
+
+    Rotate (xg, yg) by angle varphi (radians, counter-clockwise).
+    """
     function LensRotation(xg, yg, varphi)
-        print(typeof(xg),size(xg))
-        print(typeof(varphi),size(varphi))
-
-        xr = @. cos(varphi) .* xg .- sin(varphi) .* yg
-
-        yr = @. sin(varphi) .* xg .+ cos(varphi) .* yg
-        
+        xr = @. cos(varphi) * xg - sin(varphi) * yg
+        yr = @. sin(varphi) * xg + cos(varphi) * yg
         return xr, yr
-        
     end
 
+    # ═══════════════════════════════════════════════════════════════
+    #  4. COORDINATE TRANSFORMATIONS
+    # ═══════════════════════════════════════════════════════════════
 
-    #=
-    function Mesh2Array()
-        
-    end
+    """
+        Car2Pol(x, y; xc=0, yc=0)
 
-    function Array2Mesh()
-
-    end
-    =#
-
-    function Car2Pol(x, y; xc::Real=0., yc::Real=0.)
-
+    Cartesian → Polar. Uses 2-argument `atan(y, x)` to avoid Inf/NaN quadrant issues.
+    """
+    function Car2Pol(x, y; xc=0.0, yc=0.0)
         xsh = x .- xc
         ysh = y .- yc
-
-        r = @. sqrt.(xsh.^2 .+ ysh.^2)
-        phi = @. atan.(ysh ./ xsh)
-
-        return r, phi
-
+        r = @. sqrt(xsh^2 + ysh^2)
+        φ = @. atan(ysh, xsh)
+        return r, φ
     end
 
-    function Pol2Car(r, phi; xc::Real=0., yc::Real=0.)
+    """
+        Pol2Car(r, φ; xc=0, yc=0)
 
-        x = @. r .* cos.(phi)
-        y = @. r .* sin.(phi)
-
-        return x .- xc, y .- yc
-
+    Polar → Cartesian. Inverse of Car2Pol (adds center back).
+    """
+    function Pol2Car(r, φ; xc=0.0, yc=0.0)
+        x = @. r * cos(φ) + xc
+        y = @. r * sin(φ) + yc
+        return x, y
     end
 
+    # ═══════════════════════════════════════════════════════════════
+    #  5. SHEAR CONVENTIONS (spin-2 field)
+    # ═══════════════════════════════════════════════════════════════
+
+    """
+        ShearPol2Car(phi, gamma)
+
+    Shear from polar (φ_γ, |γ|) → (γ₁, γ₂).
+    γ₁ = γ·cos(2φ), γ₂ = γ·sin(2φ).
+    """
     function ShearPol2Car(phi, gamma)
-
-        gamma1 = @. gamma * cos(2 * phi)
-        gamma2 = @. gamma * sin(2 * phi)
-        return gamma1, gamma2
-
+        γ₁ = @. gamma * cos(2 * phi)
+        γ₂ = @. gamma * sin(2 * phi)
+        return γ₁, γ₂
     end
 
+    """
+        ShearCar2Pol(gamma1, gamma2)
+
+    Shear from Cartesian (γ₁, γ₂) → (φ_γ, |γ|).
+    """
     function ShearCar2Pol(gamma1, gamma2)
-
-        phi = @. atan(gamma2, gamma1) / 2
-        gamma = @. sqrt(gamma1^2 + gamma2^2)
-        return phi, gamma
-
+        φ = @. atan(gamma2, gamma1) / 2
+        γ = @. sqrt(gamma1^2 + gamma2^2)
+        return φ, γ
     end
 
-    function e2phiq(e1::Real, e2::Real)
-        #=
+    # ═══════════════════════════════════════════════════════════════
+    #  6. ELLIPTICITY CONVENTIONS (matches lenstronomy)
+    # ═══════════════════════════════════════════════════════════════
 
-        Transformation from ellipticities to orientation angle and axis ratio.
+    """
+        e2phiq(e1, e2)
 
-        e1:: eccentricity in x-direction
-        e2:: eccentricity in y-direction
-        return::  axis ratio (minor/major), angle in radian
-
-        =#
-        varphi = @. atan.(e2, e1) ./ 2.0
-        e = @. sqrt.(e1.^2 .+ e2.^2)
-        e = @. min.(e, 0.9999)
-        q = @. (1.0 .- e) ./ (1.0 .+ e)
-        return q, varphi
-
+    Ellipticity moduli → (axis ratio q, position angle φ in rad).
+    """
+    function e2phiq(e1, e2)
+        φ = @. atan(e2, e1) / 2
+        e = @. sqrt(e1^2 + e2^2)
+        e = min.(e, 0.9999)
+        q = @. (1 - e) / (1 + e)
+        return q, φ
     end
 
-    function phiq2e(q::Real, varphi::Real)
-        #=
+    """
+        phiq2e(q, varphi)
 
-        Transformation from orientation angle and axis ratio to ellipticities.
-
-        q:: axis ratio (minor/major)
-        varphi:: angle in radian
-        return::  eccentricity in x-direction and y-direction
-
-        =#
-        e1 = @. (1.0 .- q) ./ (1.0 .+ q) .* cos.(2.0 .* varphi)
-        e2 = @. (1.0 .- q) ./ (1.0 .+ q) .* sin.(2.0 .* varphi)
-
+    Axis ratio + angle → ellipticity moduli (e₁, e₂).
+    """
+    function phiq2e(q, varphi)
+        e1 = @. (1 - q) / (1 + q) * cos(2 * varphi)
+        e2 = @. (1 - q) / (1 + q) * sin(2 * varphi)
         return e1, e2
-
     end
 
-    function EllipticalDistortion(xg::AbstractArray, yg::AbstractArray;
-                     e1::Real, e2::Real, xcentre::Real, ycentre::Real)
+    # ═══════════════════════════════════════════════════════════════
+    #  7. ELLIPTICAL DISTORTION
+    # ═══════════════════════════════════════════════════════════════
 
+    """
+        EllipticalDistortion(xg, yg; e1, e2, xcentre, ycentre)
+
+    Map (x, y) to elliptically-distorted coordinates where the
+    profile becomes circular. Uses lenstronomy's convention.
+    """
+    function EllipticalDistortion(xg, yg; e1, e2, xcentre, ycentre)
         xsh = xg .- xcentre
         ysh = yg .- ycentre
-    
-        norm = @. sqrt(max(abs(1 - e1^2 - e2^2), 1e-10))
+        norm = sqrt(max(abs(1 - e1^2 - e2^2), 1e-10))
         xed = @. ((1 - e1) * xsh - e2 * ysh) / norm
         yed = @. (-e2 * xsh + (1 + e1) * ysh) / norm
         return xed, yed
-    
     end
 
-    function PoissonNoise(image::AbstractArray,
-        exp_time::Real)
+    # ═══════════════════════════════════════════════════════════════
+    #  8. NOISE MODELS
+    # ═══════════════════════════════════════════════════════════════
 
-       sigma =@.  sqrt(abs(image) / exp_time)
-       
-       poisson = rand(Normal(0., 1.), size(image)) .* sigma
-   
-       return poisson
-   
-   end
+    """
+        PoissonNoise(image, exp_time)
 
-   function GaussianNoise(image::AbstractArray,
-                       sigma_bkd::Real)
+    Poisson (shot) noise: σ = √(|image| / exp_time).
+    """
+    function PoissonNoise(image::AbstractArray, exp_time::Real)
+        sigma = @. sqrt(abs(image) / exp_time)
+        return randn!(similar(image)) .* sigma
+    end
 
-       Gauss = rand(Normal(0., 1.), size(image))  .* sigma_bkd
-   
-       return Gauss
-   
-   end
+    """
+        GaussianNoise(image, sigma_bkd)
 
-   function BackgroundNoise(img::AbstractArray;
-       clipara::Dict=Dict(:fill=>NaN, :center=>median(img), :std=>std(img, corrected=false)),
-       sigma::Real=1, boxsize::Real=50, filtersize::Real=5)
+    Gaussian readout noise with std σ_bkg.
+    """
+    function GaussianNoise(image::AbstractArray, sigma_bkd::Real)
+        return randn!(similar(image)) .* sigma_bkd
+    end
 
-       clipped = sigma_clip(img, sigma; clipara...)
+    """
+        BackgroundNoise(img; ...)
 
-       bkg, bkg_rms = estimate_background(clipped, boxsize, filter_size=filtersize)
+    Placeholder — requires `sigma_clip` and `estimate_background`
+    from an external package (e.g. AstroImages.jl).
+    Returns (0.0, 0.0) as stub.
+    """
+    function BackgroundNoise(img; kwargs...)
+        @warn "BackgroundNoise is a stub — add AstroImages.jl or similar for full functionality."
+        return 0.0, 0.0
+    end
 
-       return bkg, bkg_rms
-       
-   end
+    # ═══════════════════════════════════════════════════════════════
+    #  9. UTILITY
+    # ═══════════════════════════════════════════════════════════════
 
-   function include_folder(path::AbstractString, m::Module=@__MODULE__)
+    """
+        include_folder(path, m=@__MODULE__)
 
+    Include all .jl files in a directory into module `m`.
+    """
+    function include_folder(path::AbstractString, m::Module=@__MODULE__)
         paths = joinpath.(Ref(path), readdir(path))
-        julia_files = filter(f -> endswith(f, ".jl"), paths)
-        Base.include.(Ref(m), julia_files)
-
-        return julia_files
-
+        jl_files = sort(filter(f -> endswith(f, ".jl"), paths))
+        Base.include.(Ref(m), jl_files)
+        return jl_files
     end
 
+    """
+        name2str(arg)
+
+    Convert an identifier to its string representation at compile time.
+    """
     macro name2str(arg)
-        x = string(arg)
-        quote
-            $x
-        end
+        return string(arg)
     end
 
-
-end 
+end # module LensUtils

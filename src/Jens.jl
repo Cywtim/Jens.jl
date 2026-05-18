@@ -13,4 +13,6 @@ module Jens
     include("LensModel.jl")
     include("LightModel.jl")
 
+    include("LensPyPlot.jl")
+
 end

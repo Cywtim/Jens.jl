@@ -3,7 +3,7 @@ module NIEkappa
     include("../LensUtils.jl")
     using Distributions
 
-    function LensCheck(; b::Real, s::Real, q::Real, varphi::Real,
+    function LensCheck(b::Real, s::Real, q::Real, varphi::Real,
                          xcentre::Real=0., ycentre::Real=0.)
 
         para = [b, s, q, varphi, xcentre, ycentre]

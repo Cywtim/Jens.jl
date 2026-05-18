@@ -9,7 +9,10 @@ module PointSource
     
     end
     
-    function PS(amp::Real=1., xcentre::Real=0., ycentre::Real=0.,)
+    function PS(x::AbstractArray, y::AbstractArray; 
+            amp::Real=1., xcentre::Real=0., ycentre::Real=0.,)
+            
+
 
         
 

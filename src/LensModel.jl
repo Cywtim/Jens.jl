@@ -12,6 +12,7 @@ module LensModel
     include("LensModels/Gaussian.jl")
     include("LensModels/NFWE.jl")
     include("LensModels/Shear.jl")
+    include("LensModels/SISreal.jl")
     include("LensModels/PointMass.jl")
     
 end

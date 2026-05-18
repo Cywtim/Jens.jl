@@ -12,14 +12,12 @@ module LensGenerator
     #exp_time::Float64 # expsure time
 
     struct SingleLensInstance
-        redshift::Union{Float64, Nothing} # redshift of lens
-        cosmology::Union{AbstractCosmology, Nothing}
         LensModels::Dict # Lens model dict {model=>params}
         LightModels::Dict # Source model dict {model=>params}
         LensPlanes::Dict # Lens plane dict, start with image plane, {back=>(x1,y1),fore=>(x2,y2)}
         #------------------------Constructor------------------------#
         #Main Constructor
-        function SingleLensInstance(;redshift::Float64, cosmology::AbstractCosmology,
+        function SingleLensInstance(;
             LensModels::Dict=Dict(), LightModels::Dict=Dict(), 
             LensPlanes::Dict=Dict())
             
@@ -30,12 +28,9 @@ module LensGenerator
         #Quick Constructor
         function SingleLensInstance(;LensModels::Dict=Dict(), 
             LightModels::Dict=Dict(), LensPlanes::Dict=Dict())
-            
-            redshift = nothing
-            cosmology = nothing
+ 
 
-            return new(redshift, cosmology,
-            LensModels, LightModels, LensPlanes)
+            return new(LensModels, LightModels, LensPlanes)
         end
 
 
