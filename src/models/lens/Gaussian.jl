@@ -8,7 +8,7 @@ module Gaussian
     using SpecialFunctions:erfi as erfi
     EulerGamma = MathConstants.eulergamma
 
-    include("../LensUtils.jl")
+    using ...LensUtils: LensRotation
 
     function Zeta_z(z::Complex; q::Real=0.9, sigma::Real=0.5)
         lambda = @. exp( - (q^2 * z^2)/(2*sigma^2 *(1-q^2)))

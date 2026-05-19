@@ -1,6 +1,6 @@
 module SIE
 
-    include("../LensUtils.jl")
+    using ...LensUtils: LensRotation, e2phiq
 
     function LensCheck(; theta_E::Real, e1::Real, e2::Real, xcentre::Real=0., ycentre::Real=0.)
 

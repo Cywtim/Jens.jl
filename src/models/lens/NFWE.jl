@@ -1,7 +1,7 @@
 module NFWE
 
     include("./NFW.jl")
-    include("../LensUtils.jl")
+    using ...LensUtils: EllipticalDistortion
 
     function LensPotential(x, y; Rs, alpha_Rs, e1, e2, xcentre=0., ycentre=0.)
 

@@ -2,8 +2,7 @@ module LensBase
 
     using AstroLib, NLsolve, Optim
 
-    include("LensUtils.jl")
-    using .LensUtils: ndgrid, Pol2Car, Car2Pol
+    using ..LensUtils: ndgrid, Pol2Car, Car2Pol
 
     export LensCheck, LensFermat, LensDeflection
     export LensRayShootingPosition, LensRayShooting

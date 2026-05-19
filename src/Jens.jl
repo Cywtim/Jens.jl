@@ -1,18 +1,32 @@
 module Jens
 
-    push!(LOAD_PATH, @__DIR__)
-    
-    # including packages
-    include("LensBase.jl")
-    include("LensFITS.jl")
-    include("LensUtils.jl")
-    include("LensGenerator.jl")
-    include("LensCosmo.jl")
-    include("LensNoise.jl")
+    # ═══════════════════════════════════════════════════════════════
+    #  Core — LensUtils included ONCE, shared by all submodules
+    # ═══════════════════════════════════════════════════════════════
+    include("core/LensUtils.jl")
+    include("core/LensBase.jl")
 
-    include("LensModel.jl")
-    include("LightModel.jl")
+    # ═══════════════════════════════════════════════════════════════
+    #  I/O
+    # ═══════════════════════════════════════════════════════════════
+    include("io/LensFITS.jl")
 
-    include("LensPyPlot.jl")
+    # ═══════════════════════════════════════════════════════════════
+    #  Utilities
+    # ═══════════════════════════════════════════════════════════════
+    include("utils/LensGenerator.jl")
+    include("utils/LensCosmo.jl")
+    include("utils/LensNoise.jl")
+
+    # ═══════════════════════════════════════════════════════════════
+    #  Models
+    # ═══════════════════════════════════════════════════════════════
+    include("models/lens/LensModel.jl")
+    include("models/light/LightModel.jl")
+
+    # ═══════════════════════════════════════════════════════════════
+    #  Plotting
+    # ═══════════════════════════════════════════════════════════════
+    include("plotting/LensPyPlot.jl")
 
 end

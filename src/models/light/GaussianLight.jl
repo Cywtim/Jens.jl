@@ -2,7 +2,7 @@
 module GaussianLight
 
 
-    include("../LensUtils.jl")
+    using ...LensUtils
     
     function ConfigCheck(amp::Real=1., sigma::Real=0.5, xcentre::Real=0., ycentre::Real=0.)
 

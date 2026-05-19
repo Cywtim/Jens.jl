@@ -1,6 +1,6 @@
 module NIEkappa
 
-    include("../LensUtils.jl")
+    using LensUtils
     using Distributions
 
     function LensCheck(b::Real, s::Real, q::Real, varphi::Real,

@@ -4,7 +4,7 @@ module LensTuring
     # for Turing
     using Turing,StatsPlots,PairPlots, Distributions
     using CairoMakie
-    include("./LensBase.jl")
+    include("../core/LensBase.jl")
 
     function LensPrior()
         arg_names = Base.argument_names(model)

@@ -1,7 +1,7 @@
 
 module PointMass
 
-    include("../LensUtils.jl")
+    # LensUtils available via parent module (Jens.LensUtils)
 
     
 

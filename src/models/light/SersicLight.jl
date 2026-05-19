@@ -1,7 +1,7 @@
 module SersicLight
     # https://arxiv.org/pdf/1009.4713
     # https://arxiv.org/pdf/2306.05454
-    include("../LensUtils.jl")
+    # LensUtils available via parent module (Jens.LensUtils)
 
     function ConfigCheck()
 

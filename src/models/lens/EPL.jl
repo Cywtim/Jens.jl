@@ -2,7 +2,7 @@ module EPL
 
     using   HypergeometricFunctions
 
-    include("../LensUtils.jl")
+    using ...LensUtils: LensRotation, e2phiq
 
 
     # DOI 		https://doi.org/10.1051/0004-6361/201526773 

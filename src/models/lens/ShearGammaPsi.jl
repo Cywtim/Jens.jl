@@ -1,19 +1,20 @@
-module Shear
-     
-    include("../LensUtils.jl")
 
-    function LensCheck(; gamma1::Real, gamma2::Real, xcentre::Real=0.0, ycentre::Real=0.0)
+module ShearGamma
 
-        para = [gamma1, gamma2, xcentre, ycentre]
+    # LensUtils available via parent module (Jens.LensUtils)
 
-        if all([-0.5, 0.5,-100,-100]< para) && all([-0.5, 0.5,100,100]>para)
+    function LensCheck(; gamma::Real, psi::Real, xcentre::Real=0.0, ycentre::Real=0.0)
+
+        para = [gamma, psi, xcentre, ycentre]
+
+        if all([-0.5, 0.,-100,-100]< para) && all([-0.5, pi,100,100]>para)
             return
         else
             error("The shear configuration is out of range!")        
         end
     end
 
-    function LensPotential(x::AbstractArray, y::AbstractArray; gamma1::Real, gamma2::Real, xcentre::Real=0.0, ycentre::Real=0.0)
+    function LensPotential(x::AbstractArray, y::AbstractArray; gamma::Real, psi::Real, xcentre::Real=0.0, ycentre::Real=0.0)
         
         xsh = x .- xcentre
         ysh = y .- ycentre
@@ -23,8 +24,7 @@ module Shear
         return fermat
     end
 
-    function LensDerivative(x::AbstractArray, y::AbstractArray;
-         gamma1::Real, gamma2::Real, xcentre::Real=0.0, ycentre::Real=0.0)
+    function LensDerivative(x::AbstractArray, y::AbstractArray; gamma1::Real, psi::Real, xcentre::Real=0.0, ycentre::Real=0.0)
         
         xsh = x .- xcentre
         ysh = y .- ycentre
@@ -35,8 +35,7 @@ module Shear
         return f_x, f_y
     end
 
-    function LensHessian(x::AbstractArray, y::AbstractArray;
-         gamma1::Real, gamma2::Real, xcentre::Real=0.0, ycentre::Real=0.0, kappa::Real=0.)
+    function LensHessian(x::AbstractArray, y::AbstractArray; gamma1::Real, psi::Real, xcentre::Real=0.0, ycentre::Real=0.0, kappa=0.)
 
         xsh = x .- xcentre
         ysh = y .- ycentre

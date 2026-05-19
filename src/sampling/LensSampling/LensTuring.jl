@@ -6,8 +6,8 @@ module LensTuring
     using PairPlots
     using CairoMakie
 
-    include("../LensUtils.jl")
-    include("../LensBase.jl")
+    include("../../core/LensUtils.jl")
+    include("../../core/LensBase.jl")
     
     #=
     LensModelList = []
