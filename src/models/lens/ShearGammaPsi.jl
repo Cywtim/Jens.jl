@@ -1,8 +1,6 @@
 
 module ShearGamma
 
-    # LensUtils available via parent module (Jens.LensUtils)
-
     function LensCheck(; gamma::Real, psi::Real, xcentre::Real=0.0, ycentre::Real=0.0)
 
         para = [gamma, psi, xcentre, ycentre]

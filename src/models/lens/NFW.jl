@@ -1,16 +1,21 @@
 module NFW
     
-    # 10.48550/arXiv.astro-ph/9602053 ***
+    # 10.48550/arXiv.astro-ph/9602053 
     # https://arxiv.org/abs/astro-ph/9611107)
     # https://doi.org/10.1051/0004-6361/202346308  eq(3),
     # https://doi.org/10.1046/j.1365-8711.2003.06276.x  
 
-    max_r_rs = 10
-    num_interp = 1000
-    interpol = false
+    using Jens.LensUtils
 
-    function LensCheck(Rs, alpha_Rs, xcentre=0., ycentre=0.)
-        
+
+    function LensCheck(; Rs::Real, alpha_Rs::Real,
+                         xcentre::Real=0., ycentre::Real=0.)
+        para = [Rs, alpha_Rs, xcentre, ycentre]
+        if all([0., 0., -100., -100.] .< para) && all([100., 100., 100., 100.] .> para)
+            return
+        else
+            error("The NFW configuration is out of range!")
+        end
     end
 
     function alpha2rho0(alpha_Rs::Real, Rs::Real)
@@ -18,14 +23,6 @@ module NFW
         rho0 = @. alpha_Rs / (4.0 * Rs^2 * (1.0 + log(1.0 / 2.0)))
         return rho0
 
-    end
-
-    function potential(R::Real, Rs::Real, rho0::Real)
-        
-        r_rs = @. R / Rs
-        hx = h.(r_rs)
-        p = @. 2 * r_rs * Rs^3 * hx
-        return p
     end
 
     function h(r_rs)
@@ -42,6 +39,13 @@ module NFW
         return a
     end
 
+    function potential(R, Rs, rho0)
+        r_rs = @. R / Rs
+        hx = h.(r_rs)
+        p = @. 2 * rho0 * Rs^2 * hx
+        return p
+    end
+
     function LensPotential(x, y; Rs, alpha_Rs, xcentre=0., ycentre=0.)
 
         rho0 = alpha2rho0(alpha_Rs, Rs)
@@ -53,7 +57,6 @@ module NFW
         f = potential(R, Rs, rho0)
         return f
     end
-
 
     function alpha(R, Rs, rho0)
         R = max.(R, 1e-6)
@@ -74,8 +77,8 @@ module NFW
         else  # r_rs > 1:
             a = @. log(r_rs / 2) + 1 / sqrt(r_rs^2 - 1) * acos(1.0 / r_rs)
         end
+        return a
     end
-
 
     function LensDerivative(x, y; Rs, alpha_Rs, xcentre=0., ycentre=0.)
 
@@ -104,14 +107,14 @@ module NFW
         return kappa
     end
 
-    function gamma(x, y, R, Rs, rho0, xcentre=0., ycentre=0.)
+    function gamma(x, y, R, Rs, rho0)
 
         c = 1e-8
         R = max.(R, c)
         r_rs = @. R / Rs
         gx = g.(r_rs)
         Fx = f.(r_rs)
-        a = 2 * rho0 * Rs * (2 * gx / r_rs^2 - Fx)
+        a = @. 2 * rho0 * Rs * (2 * gx / r_rs^2 - Fx)
         shear1 = @. a * (y^2 - x^2) / R^2
         shear2 = @. -a * 2 * (x * y) / R^2
 
@@ -132,10 +135,11 @@ module NFW
             c = 1e-8
             a = 1 / (-1) * (1 - 2 / sqrt(1) * atanh(sqrt((1 - c) / (1 + c))))
         end
+        return a
     end
+                                                              
 
-
-    function LenHessian(x, y; Rs, alpha_Rs, xcentre=0., ycentre=0.)
+    function LensHessian(x, y; Rs, alpha_Rs, xcentre=0., ycentre=0.)
 
         rho0 = alpha2rho0(alpha_Rs, Rs)
         Rs = max(Rs, 1e-6)
@@ -143,11 +147,11 @@ module NFW
         xsh = @. x - xcentre
         ysh = @. y - ycentre
         R = @. sqrt(xsh^2 + ysh^2)
-        # kappa
-        kappa0 = kappa(R, 0, Rs, rho0)
+        # kappa — pass shifted coords directly (no double-shift)
+        kappa0 = kappa(xsh, ysh, Rs, rho0)
 
         # gamma
-        gamma1, gamma2 = gamma(xsh,ysh,R, Rs, rho0)
+        gamma1, gamma2 = gamma(xsh, ysh, R, Rs, rho0)
         f_xx = @. kappa0 + gamma1
         f_yy = @. kappa0 - gamma1
         f_xy = @. gamma2

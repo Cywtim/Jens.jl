@@ -1,7 +1,7 @@
 module NIE
 
     include("./NIEkappa.jl")
-    using ...LensUtils: e2phiq
+    using Jens.LensUtils
 
 
     function LensCheck(; theta_E::Real, s_scale::Real, e1::Real, e2::Real,

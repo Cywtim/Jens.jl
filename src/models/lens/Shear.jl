@@ -1,6 +1,4 @@
 module Shear
-     
-    # LensUtils available via parent module (Jens.LensUtils)
 
     function LensCheck(; gamma1::Real, gamma2::Real, xcentre::Real=0.0, ycentre::Real=0.0)
 

@@ -10,6 +10,7 @@ module LensUtils
     export  PoissonNoise, GaussianNoise, BackgroundNoise
     export  include_folder
     export  name2str
+    export ndgrid
 
     # ═══════════════════════════════════════════════════════════════
     #  1. MATRIX INVERSE (using rcond check instead of try/catch)

@@ -2,7 +2,7 @@ module EPL
 
     using   HypergeometricFunctions
 
-    using ...LensUtils: LensRotation, e2phiq
+    using Jens.LensUtils
 
 
     # DOI 		https://doi.org/10.1051/0004-6361/201526773 
@@ -120,7 +120,7 @@ module EPL
         f_yy = kappa .- gamma_1
         f_xy = gamma_2
 
-        return f_xx, f_xy, f_xy, f_yy
+        return f_xx, f_xy, f_yy
 
     end
 

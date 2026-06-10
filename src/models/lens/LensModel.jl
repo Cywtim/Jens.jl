@@ -12,5 +12,6 @@ module LensModel
     include("Shear.jl")
     include("SISreal.jl")
     include("PointMass.jl")
+    include("ComLens.jl")
 
 end

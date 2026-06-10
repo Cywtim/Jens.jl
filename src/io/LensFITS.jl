@@ -3,7 +3,7 @@ module LensFITS
 
     using FITSIO, CFITSIO, AstroLib
 
-    function FitsRead(Path, HDUs=falses)
+    function FitsRead(Path, HDUs=false)
 
         if split(Path, ".")[end] != "fits"
             Path = Path * ".fits"
@@ -11,15 +11,15 @@ module LensFITS
 
         try
             if HDUs
-                hdus = FITS(Path);
+                hdus = FITS(Path)
             else
                 hdus = FITS(Path)
             end
-        catch err
+        catch e
             println("There is no such file " * Path)
             rethrow(e)
-
         end
+        return hdus
     end
 
     function FitsWrite(NewFile, data)

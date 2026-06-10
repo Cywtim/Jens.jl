@@ -1,6 +1,6 @@
 module NIEkappa
 
-    using LensUtils
+    using Jens.LensUtils
     using Distributions
 
     function LensCheck(b::Real, s::Real, q::Real, varphi::Real,

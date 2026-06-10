@@ -2,13 +2,14 @@ module LensBase
 
     using AstroLib, NLsolve, Optim
 
-    using ..LensUtils: ndgrid, Pol2Car, Car2Pol
+    using Jens.LensUtils
 
     export LensCheck, LensFermat, LensDeflection
     export LensRayShootingPosition, LensRayShooting
     export MultiLensRayShootingPosition, MultiLensRayShooting
     export LensCriticalCurve, LensCaustic
     export LensAdaptiveCriticalCurve, LensAdaptiveCaustic
+    export lens_derivative, lens_hessian, lens_mass, lens_check
 
     # ═══════════════════════════════════════════════════════════════
     #  LensBase — Core lensing framework
@@ -23,17 +24,49 @@ module LensBase
     #  GridSL from LazyGrids is no longer required — use Matrix directly.
     # ═══════════════════════════════════════════════════════════════
 
-    function LensCheck(LensModel; LensKwargs)
-        
-        LensModel.LensCheck(; LensKwargs...)
+    # ═══════════════════════════════════════════════════════════════
+    #  Universal LensModel interface (duck-typed)
+    #
+    #  Use these instead of LensModel.Function(...) to support both
+    #  Module-based and struct-based lens models in ALL LensBase
+    #  functions (LensPlane, LensCaustic, LensMagnification, etc.).
+    #
+    #  For any model type (duck-typed, no type constraints):
+    #      lens_derivative(m, x, y; kw...) → m.LensDerivative(x, y; kw...)
+    #
+    #  For structs (extend these):
+    #      function lens_derivative(::YourLensType, x, y; kwargs...)
+    #          # ... compute deflection ...
+    #      end
+    # ═══════════════════════════════════════════════════════════════
 
+    function lens_derivative(model, x, y; kwargs...)
+        return model.LensDerivative(x, y; kwargs...)
+    end
+
+    function lens_hessian(model, x, y; kwargs...)
+        return model.LensHessian(x, y; kwargs...)
+    end
+
+    function lens_mass(model, x, y; kwargs...)
+        f = isdefined(model, :LensPotential) ? model.LensPotential : model.LensMass
+        return f(x, y; kwargs...)
+    end
+
+    function lens_check(model; kwargs...)
+        return model.LensCheck(; kwargs...)
+    end
+
+    function LensCheck(LensModel; LensKwargs)
+        lens_check(LensModel; LensKwargs...)
     end
 
 
-    function LensFermat(xg::AbstractMatrix, yg::AbstractMatrix,
-         beta=[0., 0.]; LensModel::Module, LensKwargs::Dict)
+    function LensFermat(
+      xg::AbstractMatrix, yg::AbstractMatrix,
+         beta=[0., 0.]; LensModel, LensKwargs::Dict)
         
-        phi = LensModel.LensMass(xg, yg; LensKwargs...)
+        phi = lens_mass(LensModel, xg, yg; LensKwargs...)
 
         Fermat = @. ((beta[1] - xg)^2 + (beta[2] - yg)^2) / 2 - phi
 
@@ -41,19 +74,21 @@ module LensBase
 
     end
 
-    function LensDeflection(xg::AbstractArray, yg::AbstractArray;
-         LensModel::Module, LensKwargs::Dict )
+    function LensDeflection(
+      xg::AbstractArray, yg::AbstractArray;
+         LensModel, LensKwargs::Dict )
         #=?=#
-        alpha_x, alpha_y = LensModel.LensDerivative(xg, yg; LensKwargs...)
+        alpha_x, alpha_y = lens_derivative(LensModel, xg, yg; LensKwargs...)
         
         return alpha_x, alpha_y
 
     end
 
-    function LensPlane(xg::AbstractArray, yg::AbstractArray;
-       LensModel::Module, LensKwargs::Dict )
+    function LensPlane(
+      xg::AbstractArray, yg::AbstractArray;
+       LensModel, LensKwargs::Dict )
       #=?=#
-      alpha_x, alpha_y = LensModel.LensDerivative(xg, yg; LensKwargs...)
+      alpha_x, alpha_y = lens_derivative(LensModel, xg, yg; LensKwargs...)
       
       beta_x = @. xg - alpha_x
       beta_y = @. yg - alpha_y
@@ -63,23 +98,48 @@ module LensBase
     end
 
     function LensMagnificationR(thetax::AbstractArray,
+       thetay::AbstractArray;
+        LensModel, LensKwargs::Dict)
+    
+           h_xx, h_xy, h_yy = lens_hessian(LensModel, thetax, thetay; LensKwargs...)
+           
+           magr = @. (1. .- h_xx) .* (1. .- h_yy) .- h_xy.^2.;
+    
+           return magr
+    
+    end
+
+    function LensDetJacobian(thetax::AbstractArray,
       thetay::AbstractArray;
-       LensModel::Module, LensKwargs::Dict)
+       LensModel, LensKwargs::Dict)
 
-          h_xx, h_xy, h_yy = LensModel.LensHessian(thetax, thetay; LensKwargs...)
+          h_xx, h_xy, h_yy = lens_hessian(LensModel, thetax, thetay; LensKwargs...)
           
-          magr = @. (1. .- h_xx) .* (1. .- h_yy) .- h_xy.^2.;
+          detJ = @. (1. .- h_xx) .* (1. .- h_yy) .- h_xy.^2.;
 
-          return magr
+          return detJ
+
+    end
+
+    function LensMagnification(thetax::AbstractArray,
+      thetay::AbstractArray;
+       LensModel, LensKwargs::Dict)
+
+          h_xx, h_xy, h_yy = lens_hessian(LensModel, thetax, thetay; LensKwargs...)
+          
+          detJ = @. (1. .- h_xx) .* (1. .- h_yy) .- h_xy.^2.;
+          mu   = @. 1.0 ./ detJ;
+
+          return mu
 
     end
 
     function LensRayShootingPosition(
       thetax::AbstractArray,
          thetay::AbstractArray;
-          LensModel::Module, LensKwargs::Dict)
+          LensModel, LensKwargs::Dict)
 
-        alphax, alphay = LensModel.LensDerivative(thetax, thetay; LensKwargs...)
+        alphax, alphay = lens_derivative(LensModel, thetax, thetay; LensKwargs...)
         betax = thetax .- alphax
         betay = thetay .- alphay
 
@@ -89,7 +149,7 @@ module LensBase
     function MultiLensRayShootingPosition(
       thetax::AbstractArray,
         thetay::AbstractArray;
-          LensModel::Union{Module, Vector{Module}},
+          LensModel,
             LensKwargs::Vector{Dict{Symbol, Float64}})
 
         xl = [thetax]
@@ -97,20 +157,20 @@ module LensBase
           
         len = length(LensKwargs)
 
-        if typeof(LensModel) == Module
+        if !(LensModel isa AbstractVector)
 
           for i in 1:len
-            ax, ay = LensModel.LensDerivative(xl[i], yl[i]; LensKwargs[i]...)
+            ax, ay = lens_derivative(LensModel, xl[i], yl[i]; LensKwargs[i]...)
             push!(xl, xl[i] .- ax)
             push!(yl, yl[i] .- ay)
           end
     
           return xl, yl
 
-        elseif typeof(LensModel) == Vector{Module}
+        elseif LensModel isa AbstractVector
 
           for i in 1:len
-            ax, ay = LensModel[i].LensDerivative(xl[i], yl[i]; LensKwargs[i]...)
+            ax, ay = lens_derivative(LensModel[i], xl[i], yl[i]; LensKwargs[i]...)
             push!(xl, xl[i] .- ax)
             push!(yl, yl[i] .- ay)
           end
@@ -128,10 +188,10 @@ module LensBase
 
     function LensRayShooting(thetax::AbstractArray,
          thetay::AbstractArray;
-          LensModel::Module, LensKwargs::Dict,
+          LensModel, LensKwargs::Dict,
              SourceProfile::Function, SourceKwargs::Dict)
 
-        alphax, alphay = LensModel.LensDerivative(thetax, thetay; LensKwargs...)
+        alphax, alphay = lens_derivative(LensModel, thetax, thetay; LensKwargs...)
         betax = thetax .- alphax
         betay = thetay .- alphay
 
@@ -142,9 +202,8 @@ module LensBase
     end
 
     function MultiLensRayShooting(
-      thetax::AbstractArray,
-        thetay::AbstractArray;
-          LensModel::Union{Module, Vector{Module}},
+      thetax::AbstractArray, thetay::AbstractArray;
+          LensModel,
             LensKwargs::Vector{Dict{Symbol, Float64}},
               SourceProfile::Function, SourceKwargs::Dict)
 
@@ -153,20 +212,20 @@ module LensBase
           
         len = length(LensKwargs)
 
-        if typeof(LensModel) == Module
+        if !(LensModel isa AbstractVector)
 
           for i in 1:len
-            ax, ay = LensModel.LensDerivative(xl[i], yl[i]; LensKwargs[i]...)
+            ax, ay = lens_derivative(LensModel, xl[i], yl[i]; LensKwargs[i]...)
             push!(xl, xl[i] .- ax)
             push!(yl, yl[i] .- ay)
           end
     
           return xl, yl
 
-        elseif typeof(LensModel) == Vector{Module}
+        elseif LensModel isa AbstractVector
 
           for i in 1:len
-            ax, ay = LensModel[i].LensDerivative(xl[i], yl[i]; LensKwargs[i]...)
+            ax, ay = lens_derivative(LensModel[i], xl[i], yl[i]; LensKwargs[i]...)
             push!(xl, xl[i] .- ax)
             push!(yl, yl[i] .- ay)
           end
@@ -182,15 +241,18 @@ module LensBase
      end
 
 
-    function LensCriticalCurve(; LensModel::Module, LensKwargs::Dict, hperr::Float64=0.01, 
-      r_max::Float64=2., r_bins::Int=4000, theta_bins::Int=4000)
+    function LensCriticalCurve(; 
+      LensModel, LensKwargs::Dict, hperr::Float64=0.01, 
+        r_max::Float64=2., r_bins::Int=4000, theta_bins::Int=4000)
 
         r = range(0, r_max, r_bins)
         theta = range(0, 2 * pi, theta_bins)
         (rg, thetag) = ndgrid(collect(r), collect(theta));
-        (xpg, ypg) = LensUtils.Pol2Car(rg, thetag, xc=-LensKwargs[:xcentre], yc=-LensKwargs[:ycentre])
-      
-        hp_xx, hp_xy, hp_yy = LensModel.LensHessian(xpg, ypg; LensKwargs...)
+        (xpg, ypg) = LensUtils.Pol2Car(rg, thetag,
+            xc=-get(LensKwargs, :xcentre, 0.0),
+            yc=-get(LensKwargs, :ycentre, 0.0))
+
+        hp_xx, hp_xy, hp_yy = lens_hessian(LensModel, xpg, ypg; LensKwargs...)
         hp = @. (1-hp_xx)*(1-hp_yy) - hp_xy^2
 
         ccindex = findall( 0.0 .< hp .< hperr)
@@ -201,18 +263,21 @@ module LensBase
         return ccx, ccy
     end
 
-    function LensCaustic(; LensModel::Module, LensKwargs::Dict, hperr::Float64=0.01, 
+    function LensCaustic(; 
+        LensModel, LensKwargs::Dict, hperr::Float64=0.01, 
             r_max::Float64=2., r_bins::Int=4000, theta_bins::Int=4000)
 
         r = range(0, r_max, r_bins)
         theta = range(0, 2 * pi, theta_bins)
         (rg, thetag) = ndgrid(collect(r), collect(theta));
-        (xpg, ypg) = LensUtils.Pol2Car(rg, thetag, xc=-LensKwargs[:xcentre], yc=-LensKwargs[:ycentre])
+        (xpg, ypg) = LensUtils.Pol2Car(rg, thetag,
+            xc=-get(LensKwargs, :xcentre, 0.0),
+            yc=-get(LensKwargs, :ycentre, 0.0))
 
-        fp_x, fp_y = LensModel.LensDerivative(xpg, ypg; LensKwargs...) # deflection angles f_i
+        fp_x, fp_y = lens_derivative(LensModel, xpg, ypg; LensKwargs...) # deflection angles f_i
         xpb, ypb = xpg .- fp_x, ypg .- fp_y  # lensed image plane
       
-        hp_xx, hp_xy, hp_yy = LensModel.LensHessian(xpg, ypg; LensKwargs...)
+        hp_xx, hp_xy, hp_yy = lens_hessian(LensModel, xpg, ypg; LensKwargs...)
         hp = @. (1-hp_xx)*(1-hp_yy) - hp_xy^2
 
         ccindex = findall( 0.0 .< hp .< hperr)
@@ -232,7 +297,7 @@ module LensBase
     #  the curve actually lies, giving higher resolution with fewer
     #  Hessian evaluations vs. the uniform polar-grid approach.
     #
-    #  Reference: Daněk & Heyrovský 2015, ApJ 806, 63
+    #  Ref: Daněk & Heyrovský 2015, ApJ 806, 63
     # ════════════════════════════════════════════════════════════════════
 
     """
@@ -245,12 +310,12 @@ module LensBase
     """
     function _hp_at!(cache::Dict{Tuple{Float64,Float64},Float64},
                       x::Float64, y::Float64,
-                      LensModel::Module, LensKwargs::Dict)
+                      LensModel, LensKwargs::Dict)
         key = (x, y)
         if haskey(cache, key)
             return cache[key]
         end
-        f_xx, f_xy, f_yy = LensModel.LensHessian([x], [y]; LensKwargs...)
+        f_xx, f_xy, f_yy = lens_hessian(LensModel, [x], [y]; LensKwargs...)
         hp = (1.0 - f_xx[1]) * (1.0 - f_yy[1]) - f_xy[1]^2
         cache[key] = hp
         return hp
@@ -277,19 +342,30 @@ module LensBase
     A cell "spans" the critical curve if its four corner values of
     µ⁻¹ = det(1−H) have opposite signs (guarantees a zero crossing by
     the intermediate value theorem), OR if they all have the same sign
-    but are very close to zero.
+    but are very close to zero, OR if the values vary strongly across
+    the cell relative to their magnitude (catches near-miss minima).
 
-    The second case captures tangential critical curves where µ⁻¹ stays
-    on one side of zero but comes arbitrarily close (e.g., a ring).
+    The third case captures tangential critical curves where µ⁻¹ stays
+    on one side of zero but comes arbitrarily close (e.g., a ring),
+    yet the absolute values remain above `hp_threshold`.
     """
-    function _cell_spans_zero(hp_ll, hp_lr, hp_ul, hp_ur, hp_threshold::Float64)
-        hp_vals = (hp_ll, hp_lr, hp_ul, hp_ur)
+    function _cell_spans_zero(hp_ll, hp_lr, hp_ul, hp_ur,
+                              hp_threshold::Float64,
+                              hp_var_threshold::Float64)
+        low  = min(hp_ll, hp_lr, hp_ul, hp_ur)
+        high = max(hp_ll, hp_lr, hp_ul, hp_ur)
         # Sign change → guaranteed zero crossing
-        if sign(minimum(hp_vals)) != sign(maximum(hp_vals))
+        if sign(low) != sign(high)
             return true
         end
+        amp = max(abs(low), abs(high))
         # All same sign but very close to zero (tangential caustics, rings)
-        return maximum(abs.(hp_vals)) < hp_threshold
+        if amp < hp_threshold
+            return true
+        end
+        # Relative variation: if hp varies a lot inside the cell,
+        # an extremum near zero is likely
+        return ((high - low) / (amp + 1e-15)) > hp_var_threshold
     end
 
     """
@@ -314,14 +390,19 @@ module LensBase
       range / 2^max_depth / initial_n; default ~0.03)
     - `hp_threshold`: cells with |µ⁻¹| < threshold at all corners are
       refined even without a sign change (catches tangential curves)
+    - `hp_var_threshold`: cells where (max−min)/max(|hp|) exceeds this
+      ratio are refined — catches near-miss minima where absolute
+      values stay above `hp_threshold` but vary strongly inside the
+      cell (default 0.3)
 
     **Returns**: (ccx, ccy) — Float64 vectors of critical-curve points.
     """
     function LensAdaptiveCriticalCurve(;
-        LensModel::Module, LensKwargs::Dict,
+        LensModel, LensKwargs::Dict,
         xlim::NTuple{2,Float64}=(-2.0, 2.0), ylim::NTuple{2,Float64}=(-2.0, 2.0),
         initial_nx::Int=16, initial_ny::Int=16,
-        max_depth::Int=6, hp_threshold::Float64=1e-4)
+        max_depth::Int=6, hp_threshold::Float64=1e-4,
+        hp_var_threshold::Float64=0.6)
 
         (xmin, xmax) = xlim
         (ymin, ymax) = ylim
@@ -361,7 +442,8 @@ module LensBase
                 continue
             end
 
-            if _cell_spans_zero(hp_ll, hp_lr, hp_ul, hp_ur, hp_threshold)
+            if _cell_spans_zero(hp_ll, hp_lr, hp_ul, hp_ur,
+                                hp_threshold, hp_var_threshold)
                 # Subdivide into 4
                 xm = (x1 + x2) / 2.0
                 ym = (y1 + y2) / 2.0
@@ -396,22 +478,24 @@ module LensBase
     **Returns**: (csx, csy) — Float64 vectors of caustic points.
     """
     function LensAdaptiveCaustic(;
-        LensModel::Module, LensKwargs::Dict,
+        LensModel, LensKwargs::Dict,
         xlim::NTuple{2,Float64}=(-2.0, 2.0), ylim::NTuple{2,Float64}=(-2.0, 2.0),
         initial_nx::Int=16, initial_ny::Int=16,
-        max_depth::Int=6, hp_threshold::Float64=1e-4)
+        max_depth::Int=6, hp_threshold::Float64=1e-4,
+        hp_var_threshold::Float64=0.6)
 
         # 1. Find critical curve in the image plane
         ccx, ccy = LensAdaptiveCriticalCurve(;
             LensModel, LensKwargs,
-            xlim, ylim, initial_nx, initial_ny, max_depth, hp_threshold)
+            xlim, ylim, initial_nx, initial_ny, max_depth,
+            hp_threshold, hp_var_threshold)
 
         if isempty(ccx)
             return Float64[], Float64[]
         end
 
         # 2. Batch-compute deflection for all critical points
-        α_x, α_y = LensModel.LensDerivative(ccx, ccy; LensKwargs...)
+        α_x, α_y = lens_derivative(LensModel, ccx, ccy; LensKwargs...)
 
         # 3. Map to source plane: β = θ − α(θ)
         csx = ccx .- α_x

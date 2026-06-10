@@ -1,9 +1,6 @@
 
 module PointMass
 
-    # LensUtils available via parent module (Jens.LensUtils)
-
-    
 
     function LensCheck(; theta_E::Real, xcentre::Real=0., ycentre::Real=0.)
 
@@ -16,7 +13,6 @@ module PointMass
         end
     end
 
-    # array like input
     function LensPotential(xg::AbstractArray, yg::AbstractArray;
         theta_E=.5, xcentre=0., ycentre=0.)
 
@@ -34,10 +30,6 @@ module PointMass
 
     function  LensDerivative(xg::AbstractArray, yg::AbstractArray;
         theta_E=1.5, xcentre=0., ycentre=0.)
-        #=
-            compute the physical deflection angle of a point mass, given as an
-            Einstein radius.
-        =#
 
         xsh = xg .- xcentre
         ysh = yg .- ycentre
