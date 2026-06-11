@@ -17,6 +17,8 @@ module Jens
     # # include("core/LensGenerator.jl")  # 旧顺序: Generator 在 Cosmo 前
     # 改为 Cosmo 先加载, 因为 LensGenerator 依赖 LensCosmo.lens_distance_ratio
     include("utils/LensCosmo.jl")
+    # # include("utils/LensLOS.jl")       # 旧路径: 已移至 models/lens/
+    include("models/lens/LensLOS.jl")     # LOS tidal matrix
     include("core/LensGenerator.jl")
     include("utils/LensNoise.jl")
     include("utils/LensPSF.jl")
@@ -37,7 +39,7 @@ module Jens
     # ═══════════════════════════════════════════════════════════════
     export LensUtils, LensBase
     export LensFITS
-    export LensGenerator, LensCosmo, LensNoise, LensPSF
+    export LensGenerator, LensCosmo, LensLOS, LensNoise, LensPSF
     export LensModel, LightModel
     export LensPlots
 
