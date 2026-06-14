@@ -2,24 +2,21 @@ module LensLOS
 
     using Cosmology
 
-    import ..LensBase: lens_derivative, lens_hessian, lens_mass, lens_check
-    import ..LensCosmo: lens_distance_ratio, LensedPlane
+    import ..LensBase: AbstractLens, lens_derivative, lens_hessian, lens_potential, lens_check
 
-    export ExternalTidal, LensedPlaneWithLOS
+    export ExternalTidal, WithTidal
 
     # ═══════════════════════════════════════════════════════════════
     #  ExternalTidal — 2×2 LOS tidal matrix
     #
-    #      T_ext = | 1-κ-γ1   -γ2  |
-    #              |   -γ2    1-κ+γ1|
+    #      T_ext = [[1-κ-γ1,-γ2 ], [-γ2, 1-κ+γ1]]
     #
-    #  Encodes the tidal gravitational effect of line-of-sight
-    #  large-scale structure on the light bundle. This matrix
-    #  multiplies the lens Jacobian:
+    #  The tidal gravitational effect of line-of-sight. The lens Jacobian:
     #      A_total = T_ext · (I - H_lens)
     #
-    #  Ref: Schneider (2014) arXiv:1409.0015, Sec. 5
-    #       Fleury et al. (2021) arXiv:2104.08883
+    #  Schneider (2014) arXiv:1409.0015, 
+    #  Fleury et al. (2021) arXiv:2104.08883
+    #                            10.1088/1475-7516/2021/08/024
     # ═══════════════════════════════════════════════════════════════
 
     struct ExternalTidal
@@ -46,57 +43,50 @@ module LensLOS
     end
 
     # ═══════════════════════════════════════════════════════════════
-    #  LensedPlaneWithLOS — wraps a LensedPlane with LOS tidal matrix
+    #  WithTidal — wraps ANY AbstractLens with LOS tidal matrix
     #
-    #  Purely additive: wrapping a LensedPlane rather than modifying
-    #  it. All existing code continues to work unchanged.
+    #  Generic combinator: works on LensModule, CombinedLens,
+    #  LensedPlane, MultiLensedPlane, or even another WithTidal.
     #
     #  USAGE:
-    #      cosmo = Cosmology.FlatLCDM(0.7, 0.3)
-    #      cl    = CombinedLens(SIE=>(b=0.8, e=0.3, ...))
     #      lp    = LensedPlane(cl; z_lens=0.3, z_source=1.5, cosmology=cosmo)
     #      tidal = ExternalTidal(κ_ext=0.05, γ1_ext=0.02, γ2_ext=-0.01)
-    #      lp_los = LensedPlaneWithLOS(lp, tidal)
+    #      wt    = WithTidal(lp, tidal)
     #
-    #      bx, by = LB.LensPlane(xg, yg; LensModel=lp_los, LensKwargs=Dict())
-    # ─────────────────────────────────────────────────────────────
+    #      # Also works directly on a lens model:
+    #      wt2   = WithTidal(LensModule(SIE), tidal)
+    #
+    #      bx, by = LB.LensPlane(xg, yg; LensModel=wt, LensKwargs=Dict())
+    #
     #  NOTE: lens_derivative is unchanged — LOS contributes to the
     #  Jacobian (magnification) but not to the first-order deflection
     #  in the dominant-lens approximation (Bar-Kana 1996, Fleury 2021).
-    # ─────────────────────────────────────────────────────────────
     # ═══════════════════════════════════════════════════════════════
 
-    struct LensedPlaneWithLOS{L, C, T<:ExternalTidal}
-        plane::LensedPlane{L, C}
+    struct WithTidal{L<:AbstractLens, T<:ExternalTidal} <: AbstractLens
+        lens::L
         tidal::T
     end
 
-    # ── Keyword constructor ──────────────────────────────────────
-    function LensedPlaneWithLOS(lp::LensedPlane, tidal::ExternalTidal)
-        return LensedPlaneWithLOS{typeof(lp.lens),
-                                  typeof(lp.cosmology),
-                                  typeof(tidal)}(lp, tidal)
-    end
-
     # ═══════════════════════════════════════════════════════════════
-    #  lens_* interface — dispatches only on LensedPlaneWithLOS type
+    #  lens_* interface — dispatch on WithTidal
     # ═══════════════════════════════════════════════════════════════
 
     # ── deflection: pass through (no LOS deflection in dominant-lens approx) ──
-    function lens_derivative(lp::LensedPlaneWithLOS, x, y; kwargs...)
-        return lens_derivative(lp.plane, x, y; kwargs...)
+    function lens_derivative(wt::WithTidal, x, y; kwargs...)
+        return lens_derivative(wt.lens, x, y; kwargs...)
     end
 
     # ── Hessian: apply T_ext to the Jacobian ─────────────────────
     #  A_lens = I - H_lens
     #  A_total = T_ext · A_lens
     #  Returns H_los where A_total = I - H_los  (Hessian convention)
-    function lens_hessian(lp::LensedPlaneWithLOS, x, y; kwargs...)
-        # Step 1: get main lens Hessian (already includes D_ls/D_s scaling)
-        fxx, fxy, fyy = lens_hessian(lp.plane, x, y; kwargs...)
+    function lens_hessian(wt::WithTidal, x, y; kwargs...)
+        # Step 1: get inner lens Hessian
+        fxx, fxy, fyy = lens_hessian(wt.lens, x, y; kwargs...)
 
         # Step 2: tidal matrix components
-        T11, T12, T22 = _tidal_components(lp.tidal)
+        T11, T12, T22 = _tidal_components(wt.tidal)
 
         # Step 3: A_lens = I - H_lens
         A11_lens = 1 .- fxx
@@ -116,18 +106,18 @@ module LensLOS
 
     # ── lensing potential: add LOS quadrupole term ───────────────
     #  ψ_los(θ) = ½κ_ext·|θ|² + ½γ1_ext·(θ_x² - θ_y²) + γ2_ext·θ_x·θ_y
-    function lens_mass(lp::LensedPlaneWithLOS, x, y; kwargs...)
-        psi_main = lens_mass(lp.plane, x, y; kwargs...)
-        t = lp.tidal
+    function lens_potential(wt::WithTidal, x, y; kwargs...)
+        psi_main = lens_potential(wt.lens, x, y; kwargs...)
+        t = wt.tidal
         psi_los = @. 0.5 * t.κ_ext * (x^2 + y^2) +
                       0.5 * t.γ1_ext * (x^2 - y^2) +
                            t.γ2_ext * (x * y)
         return psi_main .+ psi_los
     end
 
-    # ── validation: delegate to inner plane ──────────────────────
-    function lens_check(lp::LensedPlaneWithLOS; kwargs...)
-        lens_check(lp.plane; kwargs...)
+    # ── validation: delegate to inner lens ──────────────────────
+    function lens_check(wt::WithTidal; kwargs...)
+        lens_check(wt.lens; kwargs...)
     end
 
 end

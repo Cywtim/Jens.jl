@@ -4,9 +4,10 @@ module LensGenerator
     using Jens.LensUtils
     using Jens.LensUtils: ndgrid
 
-    import ..LensBase: lens_derivative, lens_hessian, lens_mass, lens_check
+    import ..LensBase: AbstractLens, lens_derivative, lens_hessian, lens_potential, lens_check
     import ..LensCosmo: lens_distance_ratio
 
+    export LensedPlane, MultiLensedPlane
     export LensInstance, SourceInstance
 
 
@@ -30,7 +31,7 @@ module LensGenerator
     #      bx, by = LB.LensPlane(xg, yg; LensModel=lp, LensKwargs=Dict())
     # ==============================================================
 
-    struct LensedPlane{L, C<:Cosmology.AbstractCosmology}
+    struct LensedPlane{L, C<:Cosmology.AbstractCosmology} <: AbstractLens
         lens::L
         z_lens::Float64
         z_source::Float64
@@ -54,9 +55,9 @@ module LensGenerator
         return fxx .* ratio, fxy .* ratio, fyy .* ratio
     end
 
-    function lens_mass(lp::LensedPlane, x, y; kwargs...)
+    function lens_potential(lp::LensedPlane, x, y; kwargs...)
         ratio = lens_distance_ratio(lp.cosmology, lp.z_lens, lp.z_source)
-        psi = lens_mass(lp.lens, x, y; kwargs...)
+        psi = lens_potential(lp.lens, x, y; kwargs...)
         return psi .* ratio
     end
 
@@ -65,7 +66,7 @@ module LensGenerator
     end
 
     # ==============================================================
-    #  MultiPlaneLens — recursive multi-plane ray-tracing
+    #  MultiLensedPlane — recursive multi-plane ray-tracing
     #
     #  Exact multi-plane lens equation for N lens planes at
     #  different redshifts.
@@ -79,7 +80,7 @@ module LensGenerator
     #
     #  USAGE:
     #      cosmo = Cosmology.FlatLCDM(0.7, 0.3, 0., 0.)
-    #      ml = MultiPlaneLens(
+    #      ml = MultiLensedPlane(
     #          ((CombinedLens(SIS=>(b=0.5, ...)), 0.3),
     #           (NIEkappa, 0.8));
     #          z_source   = 1.5,
@@ -87,21 +88,21 @@ module LensGenerator
     #      )
     #      bx, by = LB.LensPlane(xg, yg; LensModel=ml, LensKwargs=Dict())
     # ==============================================================
-    struct MultiPlaneLens{P<:Tuple, C<:Cosmology.AbstractCosmology}
+    struct MultiLensedPlane{P<:Tuple, C<:Cosmology.AbstractCosmology} <: AbstractLens
         planes::P
         z_source::Float64
         cosmology::C
     end
 
     # Keyword constructor for convenience
-    function MultiPlaneLens(planes::Tuple; z_source::Float64,
+    function MultiLensedPlane(planes::Tuple; z_source::Float64,
                             cosmology::Cosmology.AbstractCosmology)
-        return MultiPlaneLens(planes, z_source, cosmology)
+        return MultiLensedPlane(planes, z_source, cosmology)
     end
 
     # ── Internal: shared ray-tracing ──────────────────────────
     function _trace_rays!(aphys_x, aphys_y, thetax, thetay,
-                          z_planes, ml::MultiPlaneLens, x, y; kwargs...)
+                          z_planes, ml::MultiLensedPlane, x, y; kwargs...)
         N = length(ml.planes)
         # Plane 1: evaluated at image position theta
         thetax[1] = x
@@ -124,7 +125,7 @@ module LensGenerator
         return nothing
     end
 
-    function _alloc_ray_buffers(ml::MultiPlaneLens, x, y)
+    function _alloc_ray_buffers(ml::MultiLensedPlane, x, y)
         N = length(ml.planes)
         z_planes = Float64[z for (_, z) in ml.planes]
         T = typeof(x)
@@ -133,7 +134,7 @@ module LensGenerator
     end
 
     # ── lens_derivative: exact recursive ray-tracing ──────────
-    function lens_derivative(ml::MultiPlaneLens, x, y; kwargs...)
+    function lens_derivative(ml::MultiLensedPlane, x, y; kwargs...)
         aphys_x, aphys_y, thetax, thetay, z_planes = _alloc_ray_buffers(ml, x, y)
         _trace_rays!(aphys_x, aphys_y, thetax, thetay, z_planes, ml, x, y; kwargs...)
 
@@ -149,7 +150,7 @@ module LensGenerator
     end
 
     # ── lens_hessian: recursive Jacobian accumulation ─────────
-    function lens_hessian(ml::MultiPlaneLens, x, y; kwargs...)
+    function lens_hessian(ml::MultiLensedPlane, x, y; kwargs...)
         aphys_x, aphys_y, thetax, thetay, z_planes = _alloc_ray_buffers(ml, x, y)
         _trace_rays!(aphys_x, aphys_y, thetax, thetay, z_planes, ml, x, y; kwargs...)
 
@@ -183,20 +184,20 @@ module LensGenerator
         return (1.0 .- Axx), (-Axy), (1.0 .- Ayy)
     end
 
-    # ── lens_mass: sum of scaled potentials (approximate) ─────
-    function lens_mass(ml::MultiPlaneLens, x, y; kwargs...)
+    # ── lens_potential: sum of scaled potentials (approximate) ─────
+    function lens_potential(ml::MultiLensedPlane, x, y; kwargs...)
         aphys_x, aphys_y, thetax, thetay, z_planes = _alloc_ray_buffers(ml, x, y)
         _trace_rays!(aphys_x, aphys_y, thetax, thetay, z_planes, ml, x, y; kwargs...)
 
         psi = zeros(Float64, size(x))
         for i in 1:length(ml.planes)
             ratio = lens_distance_ratio(ml.cosmology, z_planes[i], ml.z_source)
-            psi .+= ratio .* lens_mass(ml.planes[i][1], thetax[i], thetay[i]; kwargs...)
+            psi .+= ratio .* lens_potential(ml.planes[i][1], thetax[i], thetay[i]; kwargs...)
         end
         return psi
     end
 
-    function lens_check(ml::MultiPlaneLens; kwargs...)
+    function lens_check(ml::MultiLensedPlane; kwargs...)
         for (lens_model, _) in ml.planes
             lens_check(lens_model; kwargs...)
         end

@@ -9,14 +9,15 @@ module LensBase
     export MultiLensRayShootingPosition, MultiLensRayShooting
     export LensCriticalCurve, LensCaustic
     export LensAdaptiveCriticalCurve, LensAdaptiveCaustic
-    export lens_derivative, lens_hessian, lens_mass, lens_check
+    export AbstractLens, LensModule
+    export lens_derivative, lens_hessian, lens_potential, lens_check
 
     # ═══════════════════════════════════════════════════════════════
     #  LensBase — Core lensing framework
     #
     #  All models (SIE, SIS, NIE, EPL, NFW, Shear, etc.) expose:
     #    LensCheck(; kwargs...)          → validation
-    #    LensMass(xg, yg; kwargs...)     → lensing potential ψ
+    #    LensPotential(xg, yg; kwargs...)  → lensing potential ψ
     #    LensDerivative(xg, yg; kwargs...) → deflection (α_x, α_y)
     #    LensHessian(xg, yg; kwargs...)  → Hessian (f_xx, f_xy, f_yy)
     #
@@ -25,36 +26,57 @@ module LensBase
     # ═══════════════════════════════════════════════════════════════
 
     # ═══════════════════════════════════════════════════════════════
-    #  Universal LensModel interface (duck-typed)
+    #  AbstractLens — all lens types share this abstract supertype
     #
-    #  Use these instead of LensModel.Function(...) to support both
-    #  Module-based and struct-based lens models in ALL LensBase
-    #  functions (LensPlane, LensCaustic, LensMagnification, etc.).
+    #      AbstractLens
+    #       ├── LensModule{M}        ← Module 的 struct 包装
+    #       ├── CombinedLens{M,P}    ← 多模型组合 (ComLens.jl)
+    #       ├── LensedPlane{L,C}     ← 单平面宇宙学 (LensCosmo.jl)
+    #       ├── MultiLensedPlane{P,C}  ← 多平面 (LensGenerator.jl)
+    #       └── WithTidal{L}         ← LOS 潮汐矩阵 (LensLOS.jl)
     #
-    #  For any model type (duck-typed, no type constraints):
-    #      lens_derivative(m, x, y; kw...) → m.LensDerivative(x, y; kw...)
-    #
-    #  For structs (extend these):
-    #      function lens_derivative(::YourLensType, x, y; kwargs...)
-    #          # ... compute deflection ...
-    #      end
+    #  Pure compile-time annotation: zero runtime overhead.
+    #  Enables generic wrappers (WithTidal, future combinators) to
+    #  accept any lens type without coupling.
     # ═══════════════════════════════════════════════════════════════
 
-    function lens_derivative(model, x, y; kwargs...)
-        return model.LensDerivative(x, y; kwargs...)
+    abstract type AbstractLens end
+
+    struct LensModule{M} <: AbstractLens
+        mod::M
     end
 
-    function lens_hessian(model, x, y; kwargs...)
-        return model.LensHessian(x, y; kwargs...)
+    # ═══════════════════════════════════════════════════════════════
+    #  lens_* interface — unified dispatch on AbstractLens + Module
+    # ═══════════════════════════════════════════════════════════════
+
+    # ── Raw Module → LensModule bridge (backward compat) ──
+    function lens_derivative(model::Module, x, y; kwargs...)
+        return lens_derivative(LensModule(model), x, y; kwargs...)
+    end
+    function lens_hessian(model::Module, x, y; kwargs...)
+        return lens_hessian(LensModule(model), x, y; kwargs...)
+    end
+    function lens_potential(model::Module, x, y; kwargs...)
+        return lens_potential(LensModule(model), x, y; kwargs...)
+    end
+    function lens_check(model::Module; kwargs...)
+        return lens_check(LensModule(model); kwargs...)
     end
 
-    function lens_mass(model, x, y; kwargs...)
-        f = isdefined(model, :LensPotential) ? model.LensPotential : model.LensMass
+    # ── LensModule: delegates to the wrapped Module ──
+    function lens_derivative(lm::LensModule, x, y; kwargs...)
+        return lm.mod.LensDerivative(x, y; kwargs...)
+    end
+    function lens_hessian(lm::LensModule, x, y; kwargs...)
+        return lm.mod.LensHessian(x, y; kwargs...)
+    end
+    function lens_potential(lm::LensModule, x, y; kwargs...)
+        f = isdefined(lm.mod, :LensPotential) ? lm.mod.LensPotential : lm.mod.LensMass
         return f(x, y; kwargs...)
     end
-
-    function lens_check(model; kwargs...)
-        return model.LensCheck(; kwargs...)
+    function lens_check(lm::LensModule; kwargs...)
+        return lm.mod.LensCheck(; kwargs...)
     end
 
     function LensCheck(LensModel; LensKwargs)
@@ -66,7 +88,7 @@ module LensBase
       xg::AbstractMatrix, yg::AbstractMatrix,
          beta=[0., 0.]; LensModel, LensKwargs::Dict)
         
-        phi = lens_mass(LensModel, xg, yg; LensKwargs...)
+        phi = lens_potential(LensModel, xg, yg; LensKwargs...)
 
         Fermat = @. ((beta[1] - xg)^2 + (beta[2] - yg)^2) / 2 - phi
 

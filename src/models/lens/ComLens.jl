@@ -1,6 +1,8 @@
 module ComLens
 
-    # ═══════════════════════════════════════════════════════════
+    import ...LensBase: AbstractLens, lens_derivative, lens_hessian, lens_potential, lens_check
+
+    # ═══════════════════════════════════════════════════════════════
     #  ComLens — Combined Lens Model Builder
     #
     #  Takes a list of (LensModel, parameters) pairs and returns
@@ -34,7 +36,7 @@ module ComLens
 
     export MyLens, LensPara, JitLens
 
-    import ...LensBase: lens_derivative, lens_hessian, lens_mass, lens_check
+    import ...LensBase: lens_derivative, lens_hessian, lens_potential, lens_check
 
     # ── Internal: convert NamedTuple pairs to (Module, Dict) ─
     function _to_pair(m::Module, nt::NamedTuple)
@@ -278,7 +280,7 @@ module ComLens
         )
         mu = LB.LensMagnification(xg, yg; LensModel=cl, LensKwargs=Dict())
     """
-    struct CombinedLens{M<:Tuple, P<:Tuple}
+    struct CombinedLens{M<:Tuple, P<:Tuple} <: AbstractLens
         models::M
         params::P
     end
@@ -361,7 +363,7 @@ module ComLens
         return fxx, fxy, fyy
     end
 
-    function lens_mass(cl::CombinedLens, x, y; kwargs...)
+    function lens_potential(cl::CombinedLens, x, y; kwargs...)
         psi = zeros(Float64, size(x))
         for (m, p) in zip(cl.models, cl.params)
             f = isdefined(m, :LensPotential) ? m.LensPotential : m.LensMass

@@ -15,17 +15,16 @@ module SIS
 
     function LensPotential(xg::AbstractArray, yg::AbstractArray;
          theta_E::Float64, xcentre::Float64=0., ycentre::Float64=0.)
-        #=
-            The mass profile for singular isothermal ellipsoid (SIE)
-
-            mass profile
-            \kappa(x, y) = \frac{1}{2} \left(\frac{\theta_{E}}{\sqrt{q x^2 + y^2/q}} \right)
-            with
-            \theta_{E} is the (circularized) Einstein radius,
-            q is the minor/major axis ratio,
-            x, y are defined in a coordinate system aligned with the major and minor axis of the lens
-        
-        =#
+        # =============================================================
+        #   The mass profile for singular isothermal ellipsoid (SIE)
+        #
+        #   mass profile
+        #   \kappa(x, y) = \frac{1}{2} \left(\frac{\theta_{E}}{\sqrt{q x^2 + y^2/q}} \right)
+        #   with
+        #   \theta_{E} is the (circularized) Einstein radius,
+        #   q is the minor/major axis ratio,
+        #  x, y are defined in a coordinate system aligned with the major and minor axis of the lens
+        # ==============================================================
 
         xsh = xg .- xcentre
         ysh = yg .- ycentre
@@ -53,6 +52,7 @@ module SIS
         return f_x, f_y
     end
 
+    #= 旧版本 (有 broadcast bug 和指数错误):
     function LensHessian(xg::AbstractArray, yg::AbstractArray;
          theta_E::Float64, xcentre::Float64=0., ycentre::Float64=0.)
 
@@ -64,6 +64,30 @@ module SIS
         r = R[R.>0.]  # in the SIS regime
         h[R.==0.] .= 0
         h[R.>0.] .= theta_E ./ r
+
+        f_xx = ysh .* ysh .* h
+        f_yy = xsh .* xsh .* h
+        f_xy = -xsh .* ysh .* h
+        return f_xx, f_xy, f_yy
+
+    end
+    =#
+    function LensHessian(xg::AbstractArray, yg::AbstractArray;
+         theta_E::Float64, xcentre::Float64=0., ycentre::Float64=0.)
+        # SIS Hessian:
+        #   f_xx = θ_E * y² / R³
+        #   f_yy = θ_E * x² / R³
+        #   f_xy = -θ_E * x*y / R³
+        # where R = √(x² + y²)
+
+        xsh = xg .- xcentre
+        ysh = yg .- ycentre
+
+        R3 = sqrt.(xsh.^2 .+ ysh.^2) .^ 3
+
+        h = zeros(size(R3))
+        mask = R3 .> 0
+        h[mask] .= theta_E ./ R3[mask]
 
         f_xx = ysh .* ysh .* h
         f_yy = xsh .* xsh .* h
