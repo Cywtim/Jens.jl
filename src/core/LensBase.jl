@@ -9,7 +9,8 @@ module LensBase
     export MultiLensRayShootingPosition, MultiLensRayShooting
     export LensCriticalCurve, LensCaustic
     export LensAdaptiveCriticalCurve, LensAdaptiveCaustic
-    export AbstractLens, LensModule
+    export AbstractLens, LensModule, SingleModel
+    export __lensmodel__
     export lens_derivative, lens_hessian, lens_potential, lens_check
 
     # ═══════════════════════════════════════════════════════════════
@@ -42,8 +43,78 @@ module LensBase
 
     abstract type AbstractLens end
 
+    # ═══════════════════════════════════════════════════════════════
+    #  __lensmodel__ trait — compile-time guard against invalid Modules
+    #
+    #  Calling LensModule(Math) or SingleModel(Math, a=1) would silently
+    #  fail at runtime.  This trait validates that a Module exposes the
+    #  required lens-model interface *before* wrapping it.
+    #
+    #  Required functions: LensDerivative  +  (LensPotential | LensMass)
+    #  Optional:           LensCheck, LensHessian
+    # ═══════════════════════════════════════════════════════════════
+
+    """
+        __lensmodel__(mod::Module) → Bool
+
+    Returns `true` if `mod` implements the minimal lens-model interface:
+    `LensDerivative` + (`LensPotential` or `LensMass`).
+    """
+    function __lensmodel__(mod::Module)
+        return isdefined(mod, :LensDerivative) &&
+               (isdefined(mod, :LensPotential) || isdefined(mod, :LensMass))
+    end
+
+    function _assert_lensmodel(mod::Module)
+        __lensmodel__(mod) || error(
+            "$(nameof(mod)) is not a valid lens model. " *
+            "Expected: LensDerivative + (LensPotential | LensMass). " *
+            "Did you pass a random Module instead of a lens model?")
+    end
+
+    # ═══════════════════════════════════════════════════════════════
+    #  LensModule — wraps a bare lens model Module
+    # ═══════════════════════════════════════════════════════════════
+
     struct LensModule{M} <: AbstractLens
         mod::M
+        # Inner constructor: validate at construction time
+        function LensModule(mod::Module)
+            _assert_lensmodel(mod)
+            return new{typeof(mod)}(mod)
+        end
+    end
+
+    # ═══════════════════════════════════════════════════════════════
+    #  SingleModel — struct-based single-model wrapper with baked params
+    #
+    #  Usage:
+    #      sm = LensBase.SingleModel(SIE; theta_E=1.0, e1=0.3, e2=0.0)
+    #      bx, by = LB.LensPlane(xg, yg; LensModel=sm)
+    #
+    #  Unlike LensModule (which requires LensKwargs at every call),
+    #  SingleModel bakes parameters into the struct — no Dict needed.
+    #  This is the single-model counterpart of CombinedLens.
+    # ═══════════════════════════════════════════════════════════════
+
+    struct SingleModel{M<:Module, P<:NamedTuple} <: AbstractLens
+        model::M
+        params::P
+    end
+
+    """
+        SingleModel(model::Module; kwargs...) → SingleModel
+
+    Wrap a lens model Module with baked parameters.
+    Equivalent to `CombinedLens` for a single model — no LensKwargs required.
+
+        sm = LensBase.SingleModel(SIE; theta_E=1.0, e1=0.3, e2=0.2, xcentre=0., ycentre=0.)
+        mu = LB.LensMagnification(xg, yg; LensModel=sm)
+    """
+    function SingleModel(model::Module; kwargs...)
+        _assert_lensmodel(model)
+        nt = (; (Symbol(k) => Float64(v) for (k, v) in kwargs)...)
+        return SingleModel{typeof(model), typeof(nt)}(model, nt)
     end
 
     # ═══════════════════════════════════════════════════════════════
@@ -79,6 +150,23 @@ module LensBase
         return lm.mod.LensCheck(; kwargs...)
     end
 
+    # ── SingleModel: delegates with baked params ──
+    function lens_derivative(sm::SingleModel, x, y; kwargs...)
+        return sm.model.LensDerivative(x, y; sm.params...)
+    end
+    function lens_hessian(sm::SingleModel, x, y; kwargs...)
+        return sm.model.LensHessian(x, y; sm.params...)
+    end
+    function lens_potential(sm::SingleModel, x, y; kwargs...)
+        f = isdefined(sm.model, :LensPotential) ? sm.model.LensPotential : sm.model.LensMass
+        return f(x, y; sm.params...)
+    end
+    function lens_check(sm::SingleModel; kwargs...)
+        if isdefined(sm.model, :LensCheck)
+            sm.model.LensCheck(; sm.params...)
+        end
+    end
+
     function LensCheck(LensModel; LensKwargs)
         lens_check(LensModel; LensKwargs...)
     end
@@ -86,7 +174,7 @@ module LensBase
 
     function LensFermat(
       xg::AbstractMatrix, yg::AbstractMatrix,
-         beta=[0., 0.]; LensModel, LensKwargs::Dict)
+         beta=[0., 0.]; LensModel, LensKwargs::Dict=Dict())
         
         phi = lens_potential(LensModel, xg, yg; LensKwargs...)
 
@@ -98,7 +186,7 @@ module LensBase
 
     function LensDeflection(
       xg::AbstractArray, yg::AbstractArray;
-         LensModel, LensKwargs::Dict )
+         LensModel, LensKwargs::Dict=Dict() )
         #=?=#
         alpha_x, alpha_y = lens_derivative(LensModel, xg, yg; LensKwargs...)
         
@@ -108,7 +196,7 @@ module LensBase
 
     function LensPlane(
       xg::AbstractArray, yg::AbstractArray;
-       LensModel, LensKwargs::Dict )
+       LensModel, LensKwargs::Dict=Dict() )
       #=?=#
       alpha_x, alpha_y = lens_derivative(LensModel, xg, yg; LensKwargs...)
       
@@ -121,7 +209,7 @@ module LensBase
 
     function LensMagnificationR(thetax::AbstractArray,
        thetay::AbstractArray;
-        LensModel, LensKwargs::Dict)
+        LensModel, LensKwargs::Dict=Dict())
     
            h_xx, h_xy, h_yy = lens_hessian(LensModel, thetax, thetay; LensKwargs...)
            
@@ -133,7 +221,7 @@ module LensBase
 
     function LensDetJacobian(thetax::AbstractArray,
       thetay::AbstractArray;
-       LensModel, LensKwargs::Dict)
+       LensModel, LensKwargs::Dict=Dict())
 
           h_xx, h_xy, h_yy = lens_hessian(LensModel, thetax, thetay; LensKwargs...)
           
@@ -145,7 +233,7 @@ module LensBase
 
     function LensMagnification(thetax::AbstractArray,
       thetay::AbstractArray;
-       LensModel, LensKwargs::Dict)
+       LensModel, LensKwargs::Dict=Dict())
 
           h_xx, h_xy, h_yy = lens_hessian(LensModel, thetax, thetay; LensKwargs...)
           
@@ -159,7 +247,7 @@ module LensBase
     function LensRayShootingPosition(
       thetax::AbstractArray,
          thetay::AbstractArray;
-          LensModel, LensKwargs::Dict)
+          LensModel, LensKwargs::Dict=Dict())
 
         alphax, alphay = lens_derivative(LensModel, thetax, thetay; LensKwargs...)
         betax = thetax .- alphax
@@ -172,7 +260,7 @@ module LensBase
       thetax::AbstractArray,
         thetay::AbstractArray;
           LensModel,
-            LensKwargs::Vector{Dict{Symbol, Float64}})
+            LensKwargs::Vector{Dict{Symbol, Float64}}=Dict{Symbol, Float64}[])
 
         xl = [thetax]
         yl = [thetay]
@@ -210,8 +298,8 @@ module LensBase
 
     function LensRayShooting(thetax::AbstractArray,
          thetay::AbstractArray;
-          LensModel, LensKwargs::Dict,
-             SourceProfile::Function, SourceKwargs::Dict)
+          LensModel, LensKwargs::Dict=Dict(),
+             SourceProfile::Function, SourceKwargs::Dict=Dict())
 
         alphax, alphay = lens_derivative(LensModel, thetax, thetay; LensKwargs...)
         betax = thetax .- alphax
@@ -226,8 +314,8 @@ module LensBase
     function MultiLensRayShooting(
       thetax::AbstractArray, thetay::AbstractArray;
           LensModel,
-            LensKwargs::Vector{Dict{Symbol, Float64}},
-              SourceProfile::Function, SourceKwargs::Dict)
+            LensKwargs::Vector{Dict{Symbol, Float64}}=Dict{Symbol, Float64}[],
+              SourceProfile::Function, SourceKwargs::Dict=Dict())
 
         xl = [thetax]
         yl = [thetay]
@@ -241,8 +329,6 @@ module LensBase
             push!(xl, xl[i] .- ax)
             push!(yl, yl[i] .- ay)
           end
-    
-          return xl, yl
 
         elseif LensModel isa AbstractVector
 
@@ -251,8 +337,6 @@ module LensBase
             push!(xl, xl[i] .- ax)
             push!(yl, yl[i] .- ay)
           end
-
-          return xl, yl
         
         else
 
@@ -260,11 +344,18 @@ module LensBase
 
         end
 
+        # 最终源平面位置: 最后一层光线位置
+        betax = xl[end]
+        betay = yl[end]
+        light = SourceProfile(betax, betay; SourceKwargs...)
+
+        return light
+
      end
 
 
     function LensCriticalCurve(; 
-      LensModel, LensKwargs::Dict, hperr::Float64=0.01, 
+      LensModel, LensKwargs::Dict=Dict(), hperr::Float64=0.01, 
         r_max::Float64=2., r_bins::Int=4000, theta_bins::Int=4000)
 
         r = range(0, r_max, r_bins)
@@ -286,7 +377,7 @@ module LensBase
     end
 
     function LensCaustic(; 
-        LensModel, LensKwargs::Dict, hperr::Float64=0.01, 
+        LensModel, LensKwargs::Dict=Dict(), hperr::Float64=0.01, 
             r_max::Float64=2., r_bins::Int=4000, theta_bins::Int=4000)
 
         r = range(0, r_max, r_bins)
@@ -420,7 +511,7 @@ module LensBase
     **Returns**: (ccx, ccy) — Float64 vectors of critical-curve points.
     """
     function LensAdaptiveCriticalCurve(;
-        LensModel, LensKwargs::Dict,
+        LensModel, LensKwargs::Dict=Dict(),
         xlim::NTuple{2,Float64}=(-2.0, 2.0), ylim::NTuple{2,Float64}=(-2.0, 2.0),
         initial_nx::Int=16, initial_ny::Int=16,
         max_depth::Int=6, hp_threshold::Float64=1e-4,
@@ -500,7 +591,7 @@ module LensBase
     **Returns**: (csx, csy) — Float64 vectors of caustic points.
     """
     function LensAdaptiveCaustic(;
-        LensModel, LensKwargs::Dict,
+        LensModel, LensKwargs::Dict=Dict(),
         xlim::NTuple{2,Float64}=(-2.0, 2.0), ylim::NTuple{2,Float64}=(-2.0, 2.0),
         initial_nx::Int=16, initial_ny::Int=16,
         max_depth::Int=6, hp_threshold::Float64=1e-4,

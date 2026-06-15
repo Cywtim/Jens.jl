@@ -78,7 +78,7 @@ module LensGenerator
     #  where beta_{j,k} = D(z_j, z_k) / D(z_k) is the distance ratio
     #  and aphys_i is the *physical* deflection of plane i.
     #
-    #  USAGE:
+    #  USAGE (shared kwargs, backward compat):
     #      cosmo = Cosmology.FlatLCDM(0.7, 0.3, 0., 0.)
     #      ml = MultiLensedPlane(
     #          ((CombinedLens(SIS=>(b=0.5, ...)), 0.3),
@@ -86,19 +86,38 @@ module LensGenerator
     #          z_source   = 1.5,
     #          cosmology  = cosmo,
     #      )
+    #      bx, by = LB.LensPlane(xg, yg; LensModel=ml,
+    #          LensKwargs=Dict(:b=>0.6, :s=>0.1, :q=>0.7, :varphi=>0.3))
+    #
+    #  USAGE (per-plane kwargs):
+    #      ml = MultiLensedPlane(
+    #          ((CombinedLens(SIS=>(b=0.5, ...)), 0.3, (;)),        # plane 1: no extra kwargs
+    #           (NIEkappa, 0.8, (b=0.6, s=0.1, q=0.7, varphi=0.3))); # plane 2: own kwargs baked in
+    #          z_source   = 1.5,
+    #          cosmology  = cosmo,
+    #      )
     #      bx, by = LB.LensPlane(xg, yg; LensModel=ml, LensKwargs=Dict())
     # ==============================================================
     struct MultiLensedPlane{P<:Tuple, C<:Cosmology.AbstractCosmology} <: AbstractLens
-        planes::P
+        planes::P          # each element: (lens, z, kwargs::NamedTuple)
         z_source::Float64
         cosmology::C
     end
 
-    # Keyword constructor for convenience
+    # Keyword constructor: normalizes (lens, z) → (lens, z, NamedTuple())
     function MultiLensedPlane(planes::Tuple; z_source::Float64,
-                            cosmology::Cosmology.AbstractCosmology)
-        return MultiLensedPlane(planes, z_source, cosmology)
+                              cosmology::Cosmology.AbstractCosmology)
+        # Normalize each plane to (lens, z, kwargs) 3-tuple
+        _normalized = Tuple(
+            length(p) == 2 ? (p[1], p[2], NamedTuple()) : p
+            for p in planes
+        )
+        return MultiLensedPlane(_normalized, z_source, cosmology)
     end
+
+    # ── Internal: extract per-plane kwargs, merge with shared kwargs ──
+    @inline _plane_kwargs(plane::Tuple, shared_kwargs) =
+        merge(NamedTuple(shared_kwargs), plane[3])
 
     # ── Internal: shared ray-tracing ──────────────────────────
     function _trace_rays!(aphys_x, aphys_y, thetax, thetay,
@@ -107,7 +126,8 @@ module LensGenerator
         # Plane 1: evaluated at image position theta
         thetax[1] = x
         thetay[1] = y
-        aphys_x[1], aphys_y[1] = lens_derivative(ml.planes[1][1], x, y; kwargs...)
+        kw1 = _plane_kwargs(ml.planes[1], kwargs)
+        aphys_x[1], aphys_y[1] = lens_derivative(ml.planes[1][1], x, y; kw1...)
         # Planes 2..N: exact position from all previous planes
         for i in 2:N
             tx = copy(x)
@@ -119,15 +139,16 @@ module LensGenerator
             end
             thetax[i] = tx
             thetay[i] = ty
+            kwi = _plane_kwargs(ml.planes[i], kwargs)
             aphys_x[i], aphys_y[i] = lens_derivative(
-                ml.planes[i][1], tx, ty; kwargs...)
+                ml.planes[i][1], tx, ty; kwi...)
         end
         return nothing
     end
 
     function _alloc_ray_buffers(ml::MultiLensedPlane, x, y)
         N = length(ml.planes)
-        z_planes = Float64[z for (_, z) in ml.planes]
+        z_planes = Float64[z for (_, z, _) in ml.planes]
         T = typeof(x)
         return (Vector{T}(undef, N), Vector{T}(undef, N),
                 Vector{T}(undef, N), Vector{T}(undef, N), z_planes)
@@ -160,8 +181,9 @@ module LensGenerator
         Hxy = Vector{typeof(x)}(undef, N)
         Hyy = Vector{typeof(x)}(undef, N)
         for i in 1:N
+            kwi = _plane_kwargs(ml.planes[i], kwargs)
             Hxx[i], Hxy[i], Hyy[i] = lens_hessian(
-                ml.planes[i][1], thetax[i], thetay[i]; kwargs...)
+                ml.planes[i][1], thetax[i], thetay[i]; kwi...)
         end
 
         # Recursive Jacobian: A_1 = I, A_{k+1} = I - sum beta * H * A
@@ -191,14 +213,15 @@ module LensGenerator
 
         psi = zeros(Float64, size(x))
         for i in 1:length(ml.planes)
+            kwi = _plane_kwargs(ml.planes[i], kwargs)
             ratio = lens_distance_ratio(ml.cosmology, z_planes[i], ml.z_source)
-            psi .+= ratio .* lens_potential(ml.planes[i][1], thetax[i], thetay[i]; kwargs...)
+            psi .+= ratio .* lens_potential(ml.planes[i][1], thetax[i], thetay[i]; kwi...)
         end
         return psi
     end
 
     function lens_check(ml::MultiLensedPlane; kwargs...)
-        for (lens_model, _) in ml.planes
+        for (lens_model, _, _) in ml.planes
             lens_check(lens_model; kwargs...)
         end
     end

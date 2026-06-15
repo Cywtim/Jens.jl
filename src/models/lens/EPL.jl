@@ -21,7 +21,10 @@ module EPL
     function Main2MajorAxes(theta_E::Real, gamma::Real,
         e1::Real, e2::Real)
         t = @. gamma - 1
+        #= BUG (2026-06-15): e2phiq 返回 (q, φ), 旧代码写 varphi, q = ... 导致 q←φ, φ←q
         varphi, q = LensUtils.e2phiq(e1, e2)
+        =#
+        q, varphi = LensUtils.e2phiq(e1, e2)
         b = @. theta_E * sqrt(q)
         return b, t, q, varphi
         
@@ -102,9 +105,15 @@ module EPL
         R = @. sqrt((q * xsh)^2 +  ysh^2)
         R = @. max(R, 1e-10)
         r = @. sqrt(xsh^2 + ysh^2)
+        r = @. max(r, 1e-10)     # guard against r=0 singularity
 
+        #= BUG (2026-06-15): x, y 是函数参数 (网格变量), 而非平移后的坐标 xsh, ysh
+           在旋转+平移后应使用 xsh, ysh, 否则 Hessian 会在原点附近出错
         cos = x ./ r
         sin = y ./ r
+        =#
+        cos = xsh ./ r
+        sin = ysh ./ r
         cos2 = @. cos * cos * 2 - 1
         sin2 = @. sin * cos * 2
 
