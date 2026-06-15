@@ -167,7 +167,7 @@ module LensBase
         end
     end
 
-    function LensCheck(LensModel; LensKwargs)
+    function LensCheck(LensModel; LensKwargs=Dict())
         lens_check(LensModel; LensKwargs...)
     end
 
