@@ -18,8 +18,8 @@ module LensBase
     #
     #  All models (SIE, SIS, NIE, EPL, NFW, Shear, etc.) expose:
     #    LensCheck(; kwargs...)          → validation
-    #    LensPotential(xg, yg; kwargs...)  → lensing potential ψ
-    #    LensDerivative(xg, yg; kwargs...) → deflection (α_x, α_y)
+    #    LensPotential(xg, yg; kwargs...)  → lensing potential psi
+    #    LensDerivative(xg, yg; kwargs...) → deflection (alpha_x, alpha_y)
     #    LensHessian(xg, yg; kwargs...)  → Hessian (f_xx, f_xy, f_yy)
     #
     #  Type convention: accept any AbstractArray (Matrix, SubArray, etc.)
@@ -416,7 +416,7 @@ module LensBase
     """
         _hp_at!(cache, x, y, LensModel, LensKwargs) → hp
 
-    Evaluate µ⁻¹ = det(1 - H(θ)) = (1 − f_xx)(1 − f_yy) − f_xy² at a
+    Evaluate mu_inv = det(1 - H(theta)) = (1 - f_xx)(1 - f_yy) - f_xy^2 at a
     single point (x, y). Results are cached in `cache` (a Dict keyed by
     `(Float64, Float64)`) to avoid redundant Hessian evaluations at
     shared cell corners.
@@ -584,7 +584,7 @@ module LensBase
 
     Internally calls `LensAdaptiveCriticalCurve` to find the critical
     curve in the image plane, then maps each point to the source plane
-    via the lens equation β = θ − α(θ).
+    via the lens equation beta = theta - alpha(theta).
 
     **Parameters**: same as `LensAdaptiveCriticalCurve`.
 
@@ -608,11 +608,11 @@ module LensBase
         end
 
         # 2. Batch-compute deflection for all critical points
-        α_x, α_y = lens_derivative(LensModel, ccx, ccy; LensKwargs...)
+        alpha_x, alpha_y = lens_derivative(LensModel, ccx, ccy; LensKwargs...)
 
-        # 3. Map to source plane: β = θ − α(θ)
-        csx = ccx .- α_x
-        csy = ccy .- α_y
+        # 3. Map to source plane: beta = theta - alpha(theta)
+        csx = ccx .- alpha_x
+        csy = ccy .- alpha_y
 
         return csx, csy
     end

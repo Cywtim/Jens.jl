@@ -21,7 +21,7 @@ module EPL
     function Main2MajorAxes(theta_E::Real, gamma::Real,
         e1::Real, e2::Real)
         t = @. gamma - 1
-        #= BUG (2026-06-15): e2phiq 返回 (q, φ), 旧代码写 varphi, q = ... 导致 q←φ, φ←q
+        #= BUG (2026-06-15): e2phiq returns (q, phi), old code wrote varphi, q = ... causing q←phi, phi←q
         varphi, q = LensUtils.e2phiq(e1, e2)
         =#
         q, varphi = LensUtils.e2phiq(e1, e2)

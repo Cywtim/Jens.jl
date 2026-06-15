@@ -50,24 +50,24 @@ module LensUtils
         if CarOut
             return ndgrid(collect(xg), collect(yg))
         else
-            r, φ = Car2Pol(ndgrid(collect(xg), collect(yg))...)
-            return r, φ
+            r, phi = Car2Pol(ndgrid(collect(xg), collect(yg))...)
+            return r, phi
         end
     end
 
     """
-        LensPolGrid(; rl, thetal=2π, nr=100, ntheta=100, Polout=true)
+        LensPolGrid(; rl, thetal=2pi, nr=100, ntheta=100, Polout=true)
 
     Return a polar grid in either polar or Cartesian output.
     """
-    function LensPolGrid(; rl, thetal=2π, nr=100, ntheta=100, Polout=true)
+    function LensPolGrid(; rl, thetal=2pi, nr=100, ntheta=100, Polout=true)
         rg = _build_range(rl, nr)
-        θg = range(0, thetal; length=ntheta)
+        thetag = range(0, thetal; length=ntheta)
         if Polout
-            return ndgrid(collect(rg), collect(θg))
+            return ndgrid(collect(rg), collect(thetag))
         else
-            R, Θ = ndgrid(collect(rg), collect(θg))
-            return Pol2Car(R, Θ)
+            Rgrid, Theta = ndgrid(collect(rg), collect(thetag))
+            return Pol2Car(Rgrid, Theta)
         end
     end
 
@@ -103,7 +103,7 @@ module LensUtils
     end
 
     # ═══════════════════════════════════════════════════════════════
-    #  4. COORDINATE TRANSFORMATIONS
+ # 4. COORDINATE TRANSFORMATIONS
     # ═══════════════════════════════════════════════════════════════
 
     """
@@ -115,46 +115,46 @@ module LensUtils
         xsh = x .- xc
         ysh = y .- yc
         r = @. sqrt(xsh^2 + ysh^2)
-        φ = @. atan(ysh, xsh)
-        return r, φ
+        phi = @. atan(ysh, xsh)
+        return r, phi
     end
 
     """
-        Pol2Car(r, φ; xc=0, yc=0)
+        Pol2Car(r, phi; xc=0, yc=0)
 
     Polar → Cartesian. Inverse of Car2Pol (adds center back).
     """
-    function Pol2Car(r, φ; xc=0.0, yc=0.0)
-        x = @. r * cos(φ) + xc
-        y = @. r * sin(φ) + yc
+    function Pol2Car(r, phi; xc=0.0, yc=0.0)
+        x = @. r * cos(phi) + xc
+        y = @. r * sin(phi) + yc
         return x, y
     end
 
     # ═══════════════════════════════════════════════════════════════
-    #  5. SHEAR CONVENTIONS (spin-2 field)
+ # 5. SHEAR CONVENTIONS (spin-2 field)
     # ═══════════════════════════════════════════════════════════════
 
     """
         ShearPol2Car(phi, gamma)
 
-    Shear from polar (φ_γ, |γ|) → (γ₁, γ₂).
-    γ₁ = γ·cos(2φ), γ₂ = γ·sin(2φ).
+    Shear from polar (phi_gamma, |gamma|) → (gamma1, gamma2).
+    gamma1 = gamma·cos(2*phi), gamma2 = gamma·sin(2*phi).
     """
     function ShearPol2Car(phi, gamma)
-        γ₁ = @. gamma * cos(2 * phi)
-        γ₂ = @. gamma * sin(2 * phi)
-        return γ₁, γ₂
+        gamma1 = @. gamma * cos(2 * phi)
+        gamma2 = @. gamma * sin(2 * phi)
+        return gamma1, gamma2
     end
 
     """
         ShearCar2Pol(gamma1, gamma2)
 
-    Shear from Cartesian (γ₁, γ₂) → (φ_γ, |γ|).
+    Shear from Cartesian (gamma1, gamma2) → (phi_gamma, |gamma|).
     """
     function ShearCar2Pol(gamma1, gamma2)
-        φ = @. atan(gamma2, gamma1) / 2
-        γ = @. sqrt(gamma1^2 + gamma2^2)
-        return φ, γ
+        phi = @. atan(gamma2, gamma1) / 2
+        gamma_mag = @. sqrt(gamma1^2 + gamma2^2)
+        return phi, gamma_mag
     end
 
     # ═══════════════════════════════════════════════════════════════
@@ -164,14 +164,14 @@ module LensUtils
     """
         e2phiq(e1, e2)
 
-    Ellipticity moduli → (axis ratio q, position angle φ in rad).
+    Ellipticity moduli → (axis ratio q, position angle phi in rad).
     """
     function e2phiq(e1, e2)
-        φ = @. atan(e2, e1) / 2
+        phi = @. atan(e2, e1) / 2
         e = @. sqrt(e1^2 + e2^2)
         e = min.(e, 0.9999)
         q = @. (1 - e) / (1 + e)
-        return q, φ
+        return q, phi
     end
 
     """

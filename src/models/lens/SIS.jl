@@ -75,9 +75,9 @@ module SIS
     function LensHessian(xg::AbstractArray, yg::AbstractArray;
          theta_E::Float64, xcentre::Float64=0., ycentre::Float64=0.)
         # SIS Hessian:
-        #   f_xx = θ_E * y² / R³
-        #   f_yy = θ_E * x² / R³
-        #   f_xy = -θ_E * x*y / R³
+        #   f_xx = theta_E * y^2 / R^3
+        #   f_yy = theta_E * x^2 / R^3
+        #   f_xy = -theta_E * x*y / R^3
         # where R = √(x² + y²)
 
         xsh = xg .- xcentre

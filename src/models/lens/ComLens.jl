@@ -177,7 +177,7 @@ module ComLens
             )
             fx, fy = LB.LensDeflection(xg, yg;
                 LensModel=lens, LensKwargs=kw)
-            # … compute χ² …
+            # … compute chi^2 …
         end
     """
     function JitLens(name::Symbol, pairs::Pair...)

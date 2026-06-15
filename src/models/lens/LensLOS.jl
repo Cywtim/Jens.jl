@@ -9,7 +9,7 @@ module LensLOS
     # ═══════════════════════════════════════════════════════════════
     #  ExternalTidal — 2×2 LOS tidal matrix
     #
-    #      T_ext = [[1-κ-γ1,-γ2 ], [-γ2, 1-κ+γ1]]
+    #      T_ext = [[1-kappa-gamma1, -gamma2], [-gamma2, 1-kappa+gamma1]]
     #
     #  The tidal gravitational effect of line-of-sight. The lens Jacobian:
     #      A_total = T_ext · (I - H_lens)
@@ -20,13 +20,13 @@ module LensLOS
     # ═══════════════════════════════════════════════════════════════
 
     struct ExternalTidal
-        κ_ext ::Float64   # external convergence
-        γ1_ext::Float64   # external shear (γ1 component)
-        γ2_ext::Float64   # external shear (γ2 component)
+        kappa_ext ::Float64   # external convergence
+        gamma1_ext::Float64   # external shear (gamma1 component)
+        gamma2_ext::Float64   # external shear (gamma2 component)
     end
 
     # ── Convenience constructor: convergence only ──
-    ExternalTidal(κ_ext::Float64) = ExternalTidal(κ_ext, 0.0, 0.0)
+    ExternalTidal(kappa_ext::Float64) = ExternalTidal(kappa_ext, 0.0, 0.0)
 
     # ── Identity (no LOS effect) ──
     const NO_LOS = ExternalTidal(0.0, 0.0, 0.0)
@@ -36,9 +36,9 @@ module LensLOS
     # ═══════════════════════════════════════════════════════════════
 
     function _tidal_components(t::ExternalTidal)
-        T11 = 1.0 - t.κ_ext - t.γ1_ext
-        T12 =            - t.γ2_ext   # = T21
-        T22 = 1.0 - t.κ_ext + t.γ1_ext
+        T11 = 1.0 - t.kappa_ext - t.gamma1_ext
+        T12 =            - t.gamma2_ext   # = T21
+        T22 = 1.0 - t.kappa_ext + t.gamma1_ext
         return (T11, T12, T22)
     end
 
@@ -50,7 +50,7 @@ module LensLOS
     #
     #  USAGE:
     #      lp    = LensedPlane(cl; z_lens=0.3, z_source=1.5, cosmology=cosmo)
-    #      tidal = ExternalTidal(κ_ext=0.05, γ1_ext=0.02, γ2_ext=-0.01)
+    #      tidal = ExternalTidal(kappa_ext=0.05, gamma1_ext=0.02, gamma2_ext=-0.01)
     #      wt    = WithTidal(lp, tidal)
     #
     #      # Also works directly on a lens model:
@@ -105,13 +105,13 @@ module LensLOS
     end
 
     # ── lensing potential: add LOS quadrupole term ───────────────
-    #  ψ_los(θ) = ½κ_ext·|θ|² + ½γ1_ext·(θ_x² - θ_y²) + γ2_ext·θ_x·θ_y
+    #  psi_los(theta) = 0.5·kappa_ext·|theta|² + 0.5·gamma1_ext·(theta_x² - theta_y²) + gamma2_ext·theta_x·theta_y
     function lens_potential(wt::WithTidal, x, y; kwargs...)
         psi_main = lens_potential(wt.lens, x, y; kwargs...)
         t = wt.tidal
-        psi_los = @. 0.5 * t.κ_ext * (x^2 + y^2) +
-                      0.5 * t.γ1_ext * (x^2 - y^2) +
-                           t.γ2_ext * (x * y)
+        psi_los = @. 0.5 * t.kappa_ext * (x^2 + y^2) +
+                      0.5 * t.gamma1_ext * (x^2 - y^2) +
+                           t.gamma2_ext * (x * y)
         return psi_main .+ psi_los
     end
 

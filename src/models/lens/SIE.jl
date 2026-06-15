@@ -20,7 +20,7 @@ module SIE
     end
 
     function _deflection_ma(xsh, ysh; b, q, s)
-        # Deflection (α_x, α_y) and ψ in the major-axis aligned frame (φ = 0)
+        # Deflection (alpha_x, alpha_y) and psi in the major-axis aligned frame (phi = 0)
         psi = sqrt.(q.^2 .* (s.^2 .+ xsh.^2) .+ ysh.^2)
         f_x = b ./ sqrt.(1.0 .- q.^2) .* atan.(sqrt.(1.0 .- q.^2) .* xsh ./ (psi .+ s))
         f_y = b ./ sqrt.(1.0 .- q.^2) .* atanh.(sqrt.(1.0 .- q.^2) .* ysh ./ (psi .+ q.^2 .* s))
@@ -32,7 +32,7 @@ module SIE
               theta_E::Real, e1::Real, e2::Real,
               s::Real=1e-4, xcentre::Real=0., ycentre::Real=0.)
         #=
-            Lensing potential ψ(θ) for Singular Isothermal Ellipsoid (SIE).
+            Lensing potential psi(theta) for Singular Isothermal Ellipsoid (SIE).
 
             Reference: Keeton & Kochanek 1998, arXiv:astro-ph/9705194
 
@@ -58,7 +58,7 @@ module SIE
              theta_E::Real, e1::Real, e2::Real,
              s::Real=1e-4, xcentre::Real=0., ycentre::Real=0.)
         #=
-            Deflection angle α(θ) for Singular Isothermal Ellipsoid (SIE).
+            Deflection angle alpha(theta) for Singular Isothermal Ellipsoid (SIE).
 
             Reference: Keeton & Kochanek 1998, arXiv:astro-ph/9705194
 

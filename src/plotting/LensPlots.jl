@@ -245,7 +245,7 @@ module LensPlots
     """
         PlotFermat(canvas, xg, yg; beta, LensModel, LensKwargs, style, kwargs...)
 
-    Plot the Fermat potential Φ(θ; β) = ½|θ−β|² − ψ(θ) onto `canvas`.
+    Plot the Fermat potential Phi(theta; beta) = 0.5|theta-beta|^2 - psi(theta) onto `canvas`.
 
     `style`: `:heatmap` | `:contour` | `:surface`.
     """
