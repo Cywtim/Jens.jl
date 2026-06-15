@@ -22,6 +22,7 @@ module Jens
     include("core/LensGenerator.jl")
     include("utils/LensNoise.jl")
     include("utils/LensPSF.jl")
+    include("utils/MGE.jl")
 
     # ═══════════════════════════════════════════════════════════════
     #  Models

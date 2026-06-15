@@ -28,6 +28,13 @@ module LensLOS
     # ── Convenience constructor: convergence only ──
     ExternalTidal(kappa_ext::Float64) = ExternalTidal(kappa_ext, 0.0, 0.0)
 
+    # ── Keyword constructor ──
+    function ExternalTidal(; kappa_ext::Float64=0.0,
+                           gamma1_ext::Float64=0.0,
+                           gamma2_ext::Float64=0.0)
+        return ExternalTidal(kappa_ext, gamma1_ext, gamma2_ext)
+    end
+
     # ── Identity (no LOS effect) ──
     const NO_LOS = ExternalTidal(0.0, 0.0, 0.0)
 
