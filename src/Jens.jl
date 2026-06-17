@@ -22,6 +22,7 @@ module Jens
     include("core/LensGenerator.jl")
     include("utils/LensNoise.jl")
     include("utils/LensPSF.jl")
+    include("utils/WFC3.jl")
     include("utils/MGE.jl")
 
     # ═══════════════════════════════════════════════════════════════
@@ -40,7 +41,7 @@ module Jens
     # ═══════════════════════════════════════════════════════════════
     export LensUtils, LensBase
     export LensFITS
-    export LensGenerator, LensCosmo, LensLOS, LensNoise, LensPSF
+    export LensGenerator, LensCosmo, LensLOS, LensNoise, LensPSF, WFC3
     export LensModel, LightModel
     export LensPlots
 

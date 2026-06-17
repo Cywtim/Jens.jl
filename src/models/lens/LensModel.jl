@@ -13,5 +13,6 @@ module LensModel
     include("SISreal.jl")
     include("PointMass.jl")
     include("ComLens.jl")
+    include("SpiralMultipole.jl")
 
 end

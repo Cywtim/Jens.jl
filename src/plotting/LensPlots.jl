@@ -114,6 +114,48 @@ module LensPlots
                  kwargs...)
     end
 
+    """
+        PlotPlane!(canvas, image; pixel_scale, x0, y0, colormap, clim, colorbar, kwargs...)
+
+    Draw an image matrix directly onto `canvas`, using pixel indices
+    scaled by `pixel_scale` and offset by `(x0, y0)`.
+
+    No grid arrays required — useful for pre-computed images, PSF-convolved
+    outputs, or any matrix that already lives on a regular pixel grid.
+
+    **Example**
+        # 51×51 image at WFC3 pixel scale, centred at (0,0)
+        PlotPlane!(canvas, my_image; pixel_scale=0.04)
+
+        # Pixel indices as coordinates (pixel_scale=1, origin at centre)
+        PlotPlane!(canvas, my_image)
+    """
+    function PlotPlane!(
+            canvas,
+            image::AbstractMatrix;
+            pixel_scale::Real           = 1.0,
+            x0::Real                    = 0.0,
+            y0::Real                    = 0.0,
+            colormap                    = :dense,
+            clim::Union{Tuple,Nothing}  = nothing,
+            colorbar::Bool              = true,
+            kwargs...
+        )
+        ny, nx = size(image)
+        half_x = (nx - 1) / 2 * pixel_scale
+        half_y = (ny - 1) / 2 * pixel_scale
+        xvec = range(x0 - half_x, x0 + half_x; length=nx)
+        yvec = range(y0 - half_y, y0 + half_y; length=ny)
+
+        clim_val = clim === nothing ? extrema(image) : clim
+
+        heatmap!(canvas, collect(xvec), collect(yvec), image;
+                 c        = colormap,
+                 clim     = clim_val,
+                 colorbar = colorbar,
+                 kwargs...)
+    end
+
     # ═══════════════════════════════════════════════════════════════
     #  3.  BUILDING BLOCK — DRAW SCATTER ON CANVAS
     #
