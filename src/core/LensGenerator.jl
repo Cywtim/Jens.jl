@@ -3,12 +3,15 @@ module LensGenerator
     using Cosmology
     using Jens.LensUtils
     using Jens.LensUtils: ndgrid
+    using Jens.LensPSF
+    using Jens.LensSolver
 
     import ..LensBase: AbstractLens, lens_derivative, lens_hessian, lens_potential, lens_check
     import ..LensCosmo: lens_distance_ratio
 
     export LensedPlane, MultiLensedPlane
     export LensInstance, SourceInstance
+    export add_point
 
 
     # ═══════════════════════════════════════════════════════════════
@@ -306,6 +309,66 @@ module LensGenerator
             LensPlanes = Dict(0.0 => (xg, yg))
         end
         return SourceInstance(redshift, LightModels, LensPlanes)
+    end
+
+    # ═══════════════════════════════════════════════════════════════
+    #  Point Source Pipeline
+    # ═══════════════════════════════════════════════════════════════
+
+    """
+        Img = add_point(li::LensInstance, lens_model, flux, beta_x, beta_y;
+                         psf=LensPSF.GaussianPSF(fwhm=0.052), pixel_scale=0.04,
+                         half=7, method=:supersample, n_sub=5)
+
+    Render a point source at source-plane position `(beta_x, beta_y)` [arcsec].
+
+    Pipeline:
+    1. `LensSolver.solve_images` → image positions + magnification
+    2. `LensPSF.render_point!`  → sub-pixel PSF overlay
+
+    The output image grid is taken from `li.LensPlanes`.  Use `LensInstance(; num=...)`
+    to auto-generate the grid.
+
+    **Example**
+        li = LensInstance(; num=100, deltap=0.04)
+        lens = ComLens.CombinedLens(SIS=>(b=0.8, xcentre=0., ycentre=0.))
+        img = add_point(li, lens, 100.0, 0.3, 0.1; pixel_scale=0.04)
+    """
+    function add_point(li::LensInstance, lens_model,
+                        flux::Real, beta_x::Real, beta_y::Real;
+                        psf                = LensPSF.GaussianPSF(fwhm=0.052),
+                        pixel_scale::Real  = 0.04,
+                        half::Int          = 7,
+                        method::Symbol     = :supersample,
+                        n_sub::Int         = 5)
+
+        # 1. Get the image grid
+        if isempty(li.LensPlanes)
+            error("LensPlanes is empty.  Create LensInstance with num>0 " *
+                  "for auto-grid, or populate LensPlanes manually.")
+        end
+        xg, yg = first(values(li.LensPlanes))
+        ny, nx = size(xg)
+
+        # 2. Solve lens equation
+        images = LensSolver.solve_images(lens_model, beta_x, beta_y)
+
+        # 3. Render each image
+        # Compute grid bounds for arcsec → pixel conversion
+        x_min_arcsec = xg[1, 1]
+        y_min_arcsec = yg[1, 1]
+
+        img = zeros(Float64, ny, nx)
+        for (tx, ty, mu) in images
+            F = flux * abs(mu)
+            # Convert arcsec → 1-indexed pixel coordinate
+            px = (tx - x_min_arcsec) / pixel_scale + 1.0
+            py = (ty - y_min_arcsec) / pixel_scale + 1.0
+            LensPSF.render_point!(img, psf, px, py, F;
+                                  pixel_scale, half, method, n_sub)
+        end
+
+        return img
     end
 
 end

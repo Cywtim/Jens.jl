@@ -18,6 +18,7 @@ module LensPSF
     export AbstractPSF
     export GaussianPSF, MoffatPSF, AiryDiskPSF, KernelPSF
     export make_kernel, conv_psf
+    export render_point!, evaluate_psf_at
 
     # ═══════════════════════════════════════════════════════════════
     #  Abstract type
@@ -351,6 +352,126 @@ module LensPSF
             loss      = Optim.minimum(result),
             converged = Optim.converged(result),
         )
+    end
+
+    # ═══════════════════════════════════════════════════════════════
+    #  Point Source Sub-Pixel PSF Rendering
+    # ═══════════════════════════════════════════════════════════════
+
+    """
+        evaluate_psf_at(psf::AbstractPSF, dx, dy; pixel_scale, half)
+
+    Evaluate the PSF at a specific offset `(dx, dy)` in coarse-pixel units,
+    returning a normalised kernel matrix of size `(2*half+1) × (2*half+1)`.
+
+    Used by the `:shift` method of `render_point!`.
+    """
+    function evaluate_psf_at(psf::AbstractPSF, dx::Real, dy::Real;
+                              pixel_scale::Real=0.04, half::Int=7)
+        kernel = make_kernel(psf, Float64(pixel_scale), half)
+        sz = 2*half + 1
+        out = zeros(Float64, sz, sz)
+        for j in 1:sz, i in 1:sz
+            px = (i - half - 1) - dx
+            py = (j - half - 1) - dy
+            out[j, i] = _interpolate_kernel(kernel, px, py, half)
+        end
+        s = sum(out)
+        return iszero(s) ? out : out ./ s
+    end
+
+    "Bilinear interpolation within the kernel at fractional pixel offset."
+    function _interpolate_kernel(kernel, px, py, half)
+        ix0 = floor(Int, px + half + 1)
+        iy0 = floor(Int, py + half + 1)
+        ix1, iy1 = ix0 + 1, iy0 + 1
+        sz = size(kernel, 1)
+        if ix0 < 1 || ix1 > sz || iy0 < 1 || iy1 > sz
+            return 0.0
+        end
+        wx = px + half + 1 - ix0
+        wy = py + half + 1 - iy0
+        return (1-wx)*(1-wy) * kernel[iy0, ix0] +
+               wx*(1-wy)     * kernel[iy1, ix0] +
+               (1-wx)*wy     * kernel[iy0, ix1] +
+               wx*wy         * kernel[iy1, ix1]
+    end
+
+    """
+        render_point!(image, psf, x_src, y_src, flux;
+                       pixel_scale=0.04, half=7, method=:supersample, n_sub=5)
+
+    Render a point source at 1-indexed pixel position `(x_src, y_src)` onto
+    `image` (modified in-place).  `x_src` and `y_src` are in **pixel coordinates**
+    (1-indexed, sub-pixel via fractional part).  `pixel_scale` [arcsec/pixel]
+    is used only for the PSF kernel scale.
+
+    **Methods**
+    - `:supersample` — Build fine kernel at `pixel_scale/n_sub`,
+      sum-pool into coarse pixels.  **Required for undersampled data**
+      (e.g. WFC3 FWHM ≈ 1.3 px).  Default.
+    - `:shift` — Evaluate PSF at each pixel centre offset, normalise.
+      Fast preview.  Only reliable when FWHM ≫ 2 px.
+
+    **Reference**: strong-lensing-code-dev skill, point-source-psf.md
+    """
+    function render_point!(image::AbstractMatrix, psf::AbstractPSF,
+                           x_src::Real, y_src::Real, flux::Real;
+                           pixel_scale::Real=0.04, half::Int=7,
+                           method::Symbol=:supersample, n_sub::Int=5)
+
+        ny_img, nx_img = size(image)
+
+        # x_src, y_src are 1-indexed pixel coordinates (fractional allowed)
+        ipx = floor(Int, x_src)         # integer pixel containing source
+        ipy = floor(Int, y_src)
+        fpx = Float64(x_src) - ipx      # fractional offset ∈ [0, 1)
+        fpy = Float64(y_src) - ipy
+
+        # Window origin in 1-indexed image pixel coordinates
+        ci0 = ipx - half
+        cj0 = ipy - half
+        sz = 2*half + 1
+
+        if method == :supersample
+            # Build fine kernel at pixel_scale/n_sub
+            fine_scale = Float64(pixel_scale) / n_sub
+            half_fine = (half + 1) * n_sub       # PADDED for sub-pixel offsets
+            fk = make_kernel(psf, fine_scale, half_fine)
+            ksz = size(fk, 1)
+            fc = half_fine + 1                    # 1-indexed fine centre
+
+            for cj in 0:(sz-1), ci in 0:(sz-1)
+                fi0 = ceil(Int, fc + (ci - half - 0.5 - fpx) * n_sub)
+                fi1 = floor(Int, fc + (ci - half + 0.5 - fpx) * n_sub - 1e-12)
+                fj0 = ceil(Int, fc + (cj - half - 0.5 - fpy) * n_sub)
+                fj1 = floor(Int, fc + (cj - half + 0.5 - fpy) * n_sub - 1e-12)
+                fi0 = max(1, min(ksz, fi0))
+                fi1 = max(1, min(ksz, fi1))
+                fj0 = max(1, min(ksz, fj0))
+                fj1 = max(1, min(ksz, fj1))
+
+                if fi1 >= fi0 && fj1 >= fj0
+                    val = sum(fk[fj0:fj1, fi0:fi1])
+                    ix = ci0 + ci
+                    iy = cj0 + cj
+                    if 1 <= ix <= nx_img && 1 <= iy <= ny_img
+                        image[iy, ix] += val * flux
+                    end
+                end
+            end
+        else
+            # Shift method: displaced PSF at coarse pixel centres
+            kernel = evaluate_psf_at(psf, fpx, fpy; pixel_scale, half)
+            for cj in 1:sz, ci in 1:sz
+                ix = ci0 + ci - 1
+                iy = cj0 + cj - 1
+                if 1 <= ix <= nx_img && 1 <= iy <= ny_img
+                    image[iy, ix] += kernel[cj, ci] * flux
+                end
+            end
+        end
+        return image
     end
 
 end

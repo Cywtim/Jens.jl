@@ -41,7 +41,7 @@ module SIS
         ysh = yg .- ycentre
 
         R = sqrt.( xsh.^2 .+ ysh.^2 )
-        a = zeros(size(R))
+        a = zeros(eltype(R), size(R))
         r = R[R.>0.]  # in the SIS regime
         a[R.==0.] .= 0
         a[R.>0.] .= theta_E ./ r
@@ -85,7 +85,7 @@ module SIS
 
         R3 = sqrt.(xsh.^2 .+ ysh.^2) .^ 3
 
-        h = zeros(size(R3))
+        h = zeros(eltype(R3), size(R3))
         mask = R3 .> 0
         h[mask] .= theta_E ./ R3[mask]
 

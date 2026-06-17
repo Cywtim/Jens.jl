@@ -4,5 +4,8 @@ module LightModel
     include("ExponentialLight.jl")
     include("GaussianLight.jl")
     include("SersicLight.jl")
+    include("PointSource.jl")
+
+    export PointSource
 
 end

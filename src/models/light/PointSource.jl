@@ -1,39 +1,20 @@
-module PointSource
+"""
+    PointSource(; flux=1.0, beta_x=0.0, beta_y=0.0)
 
-    mutable struct  
+A point source at source-plane position `(beta_x, beta_y)` [arcsec].
 
-    
-    ErrorMap::AbstractArray
-    PsfMap::AbstractArray
-    ImagePairs::AbstractArray # if the pairs of images determined
-    
-    end
-    
-    function PS(x::AbstractArray, y::AbstractArray; 
-            amp::Real=1., xcentre::Real=0., ycentre::Real=0.,)
-            
+Use `LensGenerator.add_point` to render it through a lens model.
 
+# Example
+    ps = PointSource(flux=100.0, beta_x=0.3, beta_y=-0.1)
+    img = add_point(li, lens, ps.flux, ps.beta_x, ps.beta_y; psf=...)
+"""
+struct PointSource
+    flux::Float64
+    beta_x::Float64
+    beta_y::Float64
+end
 
-        
-
-        return I
-
-    end
-
-    function PI(x::AbstractArray, y::AbstractArray;
-        amp::Real=1., xcentre::Real=0., ycentre::Real=0., bmin::Real=1e-4)
-        
-        A = @. (x-xcentre) * cos(varphi) + (y-ycentre) * sin(varphi)
-        B = @. -(x-xcentre) * sin(varphi) + (y-ycentre) * cos(varphi)
-        R = @. sqrt(A^2 + (B / ( 1 - q ))^2)
-
-        I = @. amp * exp( -b * ((R/Rsersic) - 1))
-
-        return I 
-    end
-
-
-    function PSolver(LensModel, image_position)
-    
-    end
+function PointSource(; flux::Real=1.0, beta_x::Real=0.0, beta_y::Real=0.0)
+    return PointSource(Float64(flux), Float64(beta_x), Float64(beta_y))
 end
