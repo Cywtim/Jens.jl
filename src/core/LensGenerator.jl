@@ -33,36 +33,35 @@ module LensGenerator
     #  USAGE:
     #      cosmo = Cosmology.FlatLCDM(0.7, 0.3, 0., 0.)
     #      cl    = CombinedLens(SIS=>(b=0.5, xcentre=0., ycentre=0.))
-    #      lp    = LensedPlane(cl; z_lens=0.3, z_source=1.5, cosmology=cosmo)
-    #      bx, by = LB.LensPlane(xg, yg; LensModel=lp, LensKwargs=Dict())
+    #      lp    = LensedPlane(cl; z_lens=0.3, cosmology=cosmo)
+    #      bx, by = LB.LensPlane(xg, yg; LensModel=lp, LensKwargs=Dict(), z_source=1.5)
     # ==============================================================
 
     struct LensedPlane{L, C<:Cosmology.AbstractCosmology} <: AbstractLens
         lens::L
         z_lens::Float64
-        z_source::Float64
         cosmology::C
     end
 
-    function LensedPlane(lens; z_lens::Float64, z_source::Float64,
+    function LensedPlane(lens; z_lens::Float64,
                          cosmology::Cosmology.AbstractCosmology)
-        return LensedPlane(lens, z_lens, z_source, cosmology)
+        return LensedPlane(lens, z_lens, cosmology)
     end
 
-    function lens_derivative(lp::LensedPlane, x, y; kwargs...)
-        ratio = lens_distance_ratio(lp.cosmology, lp.z_lens, lp.z_source)
+    function lens_derivative(lp::LensedPlane, x, y; z_source, kwargs...)
+        ratio = lens_distance_ratio(lp.cosmology, lp.z_lens, Float64(z_source))
         aphys_x, aphys_y = lens_derivative(lp.lens, x, y; kwargs...)
         return aphys_x .* ratio, aphys_y .* ratio
     end
 
-    function lens_hessian(lp::LensedPlane, x, y; kwargs...)
-        ratio = lens_distance_ratio(lp.cosmology, lp.z_lens, lp.z_source)
+    function lens_hessian(lp::LensedPlane, x, y; z_source, kwargs...)
+        ratio = lens_distance_ratio(lp.cosmology, lp.z_lens, Float64(z_source))
         fxx, fxy, fyy = lens_hessian(lp.lens, x, y; kwargs...)
         return fxx .* ratio, fxy .* ratio, fyy .* ratio
     end
 
-    function lens_potential(lp::LensedPlane, x, y; kwargs...)
-        ratio = lens_distance_ratio(lp.cosmology, lp.z_lens, lp.z_source)
+    function lens_potential(lp::LensedPlane, x, y; z_source, kwargs...)
+        ratio = lens_distance_ratio(lp.cosmology, lp.z_lens, Float64(z_source))
         psi = lens_potential(lp.lens, x, y; kwargs...)
         return psi .* ratio
     end
@@ -414,14 +413,16 @@ module LensGenerator
                          psf            = LensPSF.GaussianPSF(fwhm=0.052),
                          half::Int      = 7,
                          method::Symbol  = :supersample,
-                         n_sub::Int     = 5)
+                         n_sub::Int     = 5,
+                         z_source       = nothing,
+                         kwargs...)
 
         xg, yg = grid.xg, grid.yg
         pixel_scale = grid.pix_size
         ny, nx = size(xg)
 
         # Solve lens equation
-        images = LensSolver.solve_images(lens_model, pt.beta_x, pt.beta_y)
+        images = LensSolver.solve_images(lens_model, pt.beta_x, pt.beta_y; z_source=z_source)
 
         # Arcsec → pixel coordinate origin
         x_min = xg[1, 1]
@@ -453,13 +454,13 @@ module LensGenerator
     Otherwise the unconvolved source-plane flux is returned.
     """
     function render_lens(src::ExtendedSource, grid::Grid,
-                         lens_model; psf=nothing, kwargs...)
+                         lens_model; psf=nothing, z_source=nothing, kwargs...)
 
         xg, yg = grid.xg, grid.yg
         pixel_scale = grid.pix_size
 
         # Ray-trace: beta = theta - alpha(theta)
-        alphax, alphay = lens_derivative(lens_model, xg, yg; kwargs...)
+        alphax, alphay = lens_derivative(lens_model, xg, yg; z_source=z_source, kwargs...)
         betax = xg .- alphax
         betay = yg .- alphay
 
@@ -508,11 +509,12 @@ module LensGenerator
     Prefer `render_lens(point_image, grid, lens; ...)` in new code.
     """
     function add_point(grid::Grid, lens_model,
-                       flux::Real, beta_x::Real, beta_y::Real; kwargs...)
+                       flux::Real, beta_x::Real, beta_y::Real;
+                       z_source=nothing, kwargs...)
         pt = PointImage(flux=Float64(flux),
                         beta_x=Float64(beta_x),
                         beta_y=Float64(beta_y))
-        return render_lens(pt, grid, lens_model; kwargs...)
+        return render_lens(pt, grid, lens_model; z_source=z_source, kwargs...)
     end
 
 end

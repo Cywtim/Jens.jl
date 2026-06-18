@@ -342,7 +342,7 @@ module ComLens
     #          LensModel=cl, LensKwargs=Dict())
     # ═══════════════════════════════════════════════════════════
 
-    function lens_derivative(cl::CombinedLens, x, y; kwargs...)
+    function lens_derivative(cl::CombinedLens, x, y; z_source=nothing, kwargs...)
         fx = zeros(Float64, size(x))
         fy = zeros(Float64, size(y))
         for (m, p) in zip(cl.models, cl.params)
@@ -352,7 +352,7 @@ module ComLens
         return fx, fy
     end
 
-    function lens_hessian(cl::CombinedLens, x, y; kwargs...)
+    function lens_hessian(cl::CombinedLens, x, y; z_source=nothing, kwargs...)
         fxx = zeros(Float64, size(x))
         fxy = zeros(Float64, size(x))
         fyy = zeros(Float64, size(x))
@@ -363,7 +363,7 @@ module ComLens
         return fxx, fxy, fyy
     end
 
-    function lens_potential(cl::CombinedLens, x, y; kwargs...)
+    function lens_potential(cl::CombinedLens, x, y; z_source=nothing, kwargs...)
         psi = zeros(Float64, size(x))
         for (m, p) in zip(cl.models, cl.params)
             f = isdefined(m, :LensPotential) ? m.LensPotential : m.LensMass
@@ -372,7 +372,7 @@ module ComLens
         return psi
     end
 
-    function lens_check(cl::CombinedLens; kwargs...)
+    function lens_check(cl::CombinedLens; z_source=nothing, kwargs...)
         for (m, p) in zip(cl.models, cl.params)
             if isdefined(m, :LensCheck)
                 m.LensCheck(; p...)

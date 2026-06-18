@@ -22,7 +22,8 @@ module LensSolver
     """
     function solve_images(lens, beta_x::Real, beta_y::Real;
                           search_radius::Real=2.0, n_radial::Int=8, n_angular::Int=16,
-                          tol::Real=1e-8, max_images::Int=10)
+                          tol::Real=1e-8, max_images::Int=10,
+                          z_source=nothing)
 
         images = Tuple{Float64,Float64,Float64}[]
 
@@ -34,7 +35,7 @@ module LensSolver
                 local sol
                 try
                     sol = nlsolve([x0, y0]; autodiff=:finite) do fx, x
-                        ax, ay = lens_derivative(lens, [x[1]], [x[2]])
+                        ax, ay = lens_derivative(lens, [x[1]], [x[2]]; z_source=z_source)
                         fx[1] = x[1] - ax[1] - beta_x
                         fx[2] = x[2] - ay[1] - beta_y
                     end
@@ -59,7 +60,7 @@ module LensSolver
                 is_new || continue
 
                 # Compute magnification μ = 1 / det(1 − H)
-                fxx, fxy, fyy = lens_hessian(lens, [tx], [ty])
+                fxx, fxy, fyy = lens_hessian(lens, [tx], [ty]; z_source=z_source)
                 detJ = (1.0 - fxx[1]) * (1.0 - fyy[1]) - fxy[1]^2
                 mu = iszero(detJ) ? Inf : 1.0 / detJ
 

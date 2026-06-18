@@ -157,21 +157,21 @@ cosmo = Cosmology.FlatLCDM(0.7, 0.3, 0.0, 0.0)
 zL    = 0.3
 zS    = 1.5
 
-lp = LG.LensedPlane(cl; z_lens=zL, z_source=zS, cosmology=cosmo)
+lp = LG.LensedPlane(cl; z_lens=zL, cosmology=cosmo)
 
 # D_ls/D_s ratio
 ratio = Jens.LensCosmo.lens_distance_ratio(cosmo, zL, zS)
 println("D_ls/D_s = $(round(ratio; digits=3))  @ zL=$zL, zS=$zS")
 
 # Check: deflection with LensedPlane is scaled by ratio
-αx_lp, αy_lp = LB.lens_derivative(lp, XG, YG)
+αx_lp, αy_lp = LB.lens_derivative(lp, XG, YG; z_source=zS)
 println("α scaled: ratio × α_raw = $(ratio) × $(maximum(abs.(αx_c))) ≈ $(maximum(abs.(αx_lp)))")
 
 ccx_lp, ccy_lp = LB.LensAdaptiveCriticalCurve(;
-    LensModel=lp, LensKwargs=Dict(),
+    LensModel=lp, LensKwargs=Dict(), z_source=zS,
     xlim=(-2.5,2.5), ylim=(-2.5,2.5))
 csx_lp, csy_lp = LB.LensAdaptiveCaustic(;
-    LensModel=lp, LensKwargs=Dict(),
+    LensModel=lp, LensKwargs=Dict(), z_source=zS,
     xlim=(-2.5,2.5), ylim=(-2.5,2.5))
 
 scatter(ccx_lp, ccy_lp; ms=1, mc=:red, label="CC (cosmo)", msw=0)
@@ -184,19 +184,19 @@ title!("LensedPlane — zL=$zL, zS=$zS"); display(current())
 tidal = Jens.LensLOS.ExternalTidal(0.05, 0.02, -0.01)
 wt    = Jens.LensLOS.WithTidal(lp, tidal)
 
-αx_wt, αy_wt = LB.lens_derivative(wt, XG, YG)   # unchanged by design
-ψ_wt          = LB.lens_potential(wt, XG, YG)         # adds LOS quadrupole
+αx_wt, αy_wt = LB.lens_derivative(wt, XG, YG; z_source=zS)   # unchanged by design
+ψ_wt          = LB.lens_potential(wt, XG, YG; z_source=zS)         # adds LOS quadrupole
 
 # Hessian includes T_ext · A_lens
-fxx_wt, fxy_wt, fyy_wt = LB.lens_hessian(wt, XG, YG)
+fxx_wt, fxy_wt, fyy_wt = LB.lens_hessian(wt, XG, YG; z_source=zS)
 detJ_wt = @. (1 - fxx_wt)*(1 - fyy_wt) - fxy_wt^2
 μ_wt    = @. 1.0 / detJ_wt
 
 ccx_wt, ccy_wt = LB.LensAdaptiveCriticalCurve(;
-    LensModel=wt, LensKwargs=Dict(),
+    LensModel=wt, LensKwargs=Dict(), z_source=zS,
     xlim=(-2.5,2.5), ylim=(-2.5,2.5))
 csx_wt, csy_wt = LB.LensAdaptiveCaustic(;
-    LensModel=wt, LensKwargs=Dict(),
+    LensModel=wt, LensKwargs=Dict(), z_source=zS,
     xlim=(-2.5,2.5), ylim=(-2.5,2.5))
 
 p7 = heatmap(xg, yg, μ',  title="μ (no LOS)", clims=(-10,10))

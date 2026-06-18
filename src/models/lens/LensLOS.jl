@@ -56,7 +56,7 @@ module LensLOS
     #  LensedPlane, MultiLensedPlane, or even another WithTidal.
     #
     #  USAGE:
-    #      lp    = LensedPlane(cl; z_lens=0.3, z_source=1.5, cosmology=cosmo)
+    #      lp    = LensedPlane(cl; z_lens=0.3, cosmology=cosmo)
     #      tidal = ExternalTidal(kappa_ext=0.05, gamma1_ext=0.02, gamma2_ext=-0.01)
     #      wt    = WithTidal(lp, tidal)
     #
@@ -80,17 +80,17 @@ module LensLOS
     # ═══════════════════════════════════════════════════════════════
 
     # ── deflection: pass through (no LOS deflection in dominant-lens approx) ──
-    function lens_derivative(wt::WithTidal, x, y; kwargs...)
-        return lens_derivative(wt.lens, x, y; kwargs...)
+    function lens_derivative(wt::WithTidal, x, y; z_source=nothing, kwargs...)
+        return lens_derivative(wt.lens, x, y; z_source=z_source, kwargs...)
     end
 
     # ── Hessian: apply T_ext to the Jacobian ─────────────────────
     #  A_lens = I - H_lens
     #  A_total = T_ext · A_lens
     #  Returns H_los where A_total = I - H_los  (Hessian convention)
-    function lens_hessian(wt::WithTidal, x, y; kwargs...)
+    function lens_hessian(wt::WithTidal, x, y; z_source=nothing, kwargs...)
         # Step 1: get inner lens Hessian
-        fxx, fxy, fyy = lens_hessian(wt.lens, x, y; kwargs...)
+        fxx, fxy, fyy = lens_hessian(wt.lens, x, y; z_source=z_source, kwargs...)
 
         # Step 2: tidal matrix components
         T11, T12, T22 = _tidal_components(wt.tidal)
@@ -113,8 +113,8 @@ module LensLOS
 
     # ── lensing potential: add LOS quadrupole term ───────────────
     #  psi_los(theta) = 0.5·kappa_ext·|theta|² + 0.5·gamma1_ext·(theta_x² - theta_y²) + gamma2_ext·theta_x·theta_y
-    function lens_potential(wt::WithTidal, x, y; kwargs...)
-        psi_main = lens_potential(wt.lens, x, y; kwargs...)
+    function lens_potential(wt::WithTidal, x, y; z_source=nothing, kwargs...)
+        psi_main = lens_potential(wt.lens, x, y; z_source=z_source, kwargs...)
         t = wt.tidal
         psi_los = @. 0.5 * t.kappa_ext * (x^2 + y^2) +
                       0.5 * t.gamma1_ext * (x^2 - y^2) +
@@ -123,7 +123,7 @@ module LensLOS
     end
 
     # ── validation: delegate to inner lens ──────────────────────
-    function lens_check(wt::WithTidal; kwargs...)
+    function lens_check(wt::WithTidal; z_source=nothing, kwargs...)
         lens_check(wt.lens; kwargs...)
     end
 
