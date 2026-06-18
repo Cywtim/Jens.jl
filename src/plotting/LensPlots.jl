@@ -64,6 +64,7 @@ module LensPlots
     export PlotCriticalCurve!, PlotCaustic!
     export PlotFermat, PlotMagnification
     export PlotLens
+    export PlotVec!
 
     # ═══════════════════════════════════════════════════════════════
     #  Create canvas
@@ -217,7 +218,68 @@ module LensPlots
     end
 
     # ═══════════════════════════════════════════════════════════════
-    #  4.  COMPUTE-AND-OVERLAY HELPERS
+    #  4.  BUILDING BLOCK — DRAW VECTOR ARROWS ON CANVAS
+    # ═══════════════════════════════════════════════════════════════
+
+    """
+        PlotVec!(canvas, xg, yg, ax, ay; step, color, label, arrow, kwargs...)
+
+    Overlay vector arrows onto `canvas`.  Each grid point `(xg, yg)` gets
+    an arrow with components `(ax, ay)` — e.g. deflection angles or
+    source-plane displacements.
+
+    **Parameters**
+    - `step::Int` — subsample every `step`-th point (default: auto, ~20 arrows per axis)
+    - `color`    — arrow colour            (default `:black`)
+    - `label`    — legend label            (default `""`)
+    - `arrow`    — Plots.jl arrow style    (e.g. `arrow(:closed, 0.3)`)
+
+    **Example**
+        canvas = LensCanvas(; xlims=(-2,2), ylims=(-2,2))
+        PlotPlane!(canvas, xg, yg, image)
+        PlotVec!(canvas, xg, yg, alphax, alphay; step=5, color=:white)
+    """
+    function PlotVec!(
+            canvas,
+            xg::AbstractMatrix{<:Real}, yg::AbstractMatrix{<:Real},
+            ax::AbstractMatrix{<:Real}, ay::AbstractMatrix{<:Real};
+            step::Int                     = 0,
+            color                         = :black,
+            label::String                 = "",
+            arrow                         = nothing,
+            kwargs...
+        )
+        # Auto-scale step to get ~20 arrows per axis
+        n = size(xg, 1)
+        s = step > 0 ? step : max(1, div(n, 20))
+
+        xs = vec(xg[1:s:end, 1:s:end])
+        ys = vec(yg[1:s:end, 1:s:end])
+        us = vec(ax[1:s:end, 1:s:end])
+        vs = vec(ay[1:s:end, 1:s:end])
+
+        arrow_kw = arrow !== nothing ? (; arrow) : NamedTuple()
+        quiver!(canvas, xs, ys; quiver=(us, vs), color=color, label=label,
+                arrow_kw..., kwargs...)
+    end
+
+    # ── 1D vector fallback ──
+    function PlotVec!(
+            canvas,
+            xg::AbstractVector{<:Real}, yg::AbstractVector{<:Real},
+            ax::AbstractVector{<:Real}, ay::AbstractVector{<:Real};
+            color                         = :black,
+            label::String                 = "",
+            arrow                         = nothing,
+            kwargs...
+        )
+        arrow_kw = arrow !== nothing ? (; arrow) : NamedTuple()
+        quiver!(canvas, xg, yg; quiver=(ax, ay), color=color, label=label,
+                arrow_kw..., kwargs...)
+    end
+
+    # ═══════════════════════════════════════════════════════════════
+    #  5.  COMPUTE-AND-OVERLAY HELPERS
     # ═══════════════════════════════════════════════════════════════
 
     using ..LensBase
@@ -281,7 +343,7 @@ module LensPlots
     end
 
     # ═══════════════════════════════════════════════════════════════
-    #  5.  HIGH-LEVEL CONVENIENCE
+    #  6.  HIGH-LEVEL CONVENIENCE
     # ═══════════════════════════════════════════════════════════════
 
     """
