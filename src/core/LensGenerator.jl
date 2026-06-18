@@ -5,12 +5,14 @@ module LensGenerator
     using Jens.LensUtils: ndgrid
     using Jens.LensPSF
     using Jens.LensSolver
+    using Jens.LightModel: AbstractLight, ExtendedSource, PointImage, CompositeImage, evaluate_source
 
     import ..LensBase: AbstractLens, lens_derivative, lens_hessian, lens_potential, lens_check
     import ..LensCosmo: lens_distance_ratio
 
-    export LensedPlane, MultiLensedPlane
+    export LensedPlane, MultiLensedPlane, LightPlane, MultiLightPlane
     export LensInstance, SourceInstance
+    export render_lens
     export add_point
 
 
@@ -66,6 +68,50 @@ module LensGenerator
 
     function lens_check(lp::LensedPlane; kwargs...)
         lens_check(lp.lens; kwargs...)
+    end
+
+    # ==============================================================
+    #  LightPlane — redshift wrapper for an AbstractLight component
+    #
+    #      host = LightPlane(
+    #          ExtendedSource(SersicSpheric; amp=1.0, Rsersic=0.5),
+    #          z=1.5,
+    #      )
+    #      agn  = LightPlane(PointImage(flux=100, beta_x=0.3), z=1.5)
+    #
+    #  The `z` field is the cosmological redshift of the source.
+    #  Pairs with `LensedPlane` in `LensSystem` to compute
+    #  distance ratios for ray-tracing.
+    # ==============================================================
+
+    struct LightPlane{L<:AbstractLight}
+        light::L
+        z::Float64
+    end
+
+    function LightPlane(light::AbstractLight; z::Real)
+        return LightPlane(light, Float64(z))
+    end
+
+    # ==============================================================
+    #  MultiLightPlane — N light sources at different redshifts
+    #
+    #      mlp = MultiLightPlane(
+    #          (host, 1.5),
+    #          (agn,  2.0),
+    #      )
+    #
+    #  Each element is `(light::AbstractLight, z::Float64)`.
+    #  See `LensSystem` for pairing with `LensedPlane` planes.
+    # ==============================================================
+
+    struct MultiLightPlane{P<:Tuple}
+        planes::P    # each element: (light::AbstractLight, z::Float64)
+    end
+
+    function MultiLightPlane(planes::Pair{<:AbstractLight, <:Real}...)
+        nt = Tuple((p.first, Float64(p.second)) for p in planes)
+        return MultiLightPlane{typeof(nt)}(nt)
     end
 
     # ==============================================================
@@ -312,63 +358,143 @@ module LensGenerator
     end
 
     # ═══════════════════════════════════════════════════════════════
-    #  Point Source Pipeline
+    #  Unified Render Pipeline (AbstractLight)
+    #
+    #   render_lens(src, li, lens_model; psf, ...)
+    #
+    #  PointImage   → solve_images + render_point! (sub-pixel PSF)
+    #  ExtendedSource → ray-trace + evaluate_source (+ optional PSF)
+    #  CompositeImage  → sum of components
+    #
+    #  add_point is kept as a backward-compat convenience wrapper.
     # ═══════════════════════════════════════════════════════════════
 
-    """
-        Img = add_point(li::LensInstance, lens_model, flux, beta_x, beta_y;
-                         psf=LensPSF.GaussianPSF(fwhm=0.052), pixel_scale=0.04,
-                         half=7, method=:supersample, n_sub=5)
-
-    Render a point source at source-plane position `(beta_x, beta_y)` [arcsec].
-
-    Pipeline:
-    1. `LensSolver.solve_images` → image positions + magnification
-    2. `LensPSF.render_point!`  → sub-pixel PSF overlay
-
-    The output image grid is taken from `li.LensPlanes`.  Use `LensInstance(; num=...)`
-    to auto-generate the grid.
-
-    **Example**
-        li = LensInstance(; num=100, deltap=0.04)
-        lens = ComLens.CombinedLens(SIS=>(b=0.8, xcentre=0., ycentre=0.))
-        img = add_point(li, lens, 100.0, 0.3, 0.1; pixel_scale=0.04)
-    """
-    function add_point(li::LensInstance, lens_model,
-                        flux::Real, beta_x::Real, beta_y::Real;
-                        psf                = LensPSF.GaussianPSF(fwhm=0.052),
-                        pixel_scale::Real  = 0.04,
-                        half::Int          = 7,
-                        method::Symbol     = :supersample,
-                        n_sub::Int         = 5)
-
-        # 1. Get the image grid
-        if isempty(li.LensPlanes)
-            error("LensPlanes is empty.  Create LensInstance with num>0 " *
-                  "for auto-grid, or populate LensPlanes manually.")
-        end
+    # ── Internal: parse grid from LensInstance, derive pixel scale ──
+    function _grid_from_instance(li::LensInstance)
+        isempty(li.LensPlanes) && error(
+            "LensPlanes is empty.  Create LensInstance with num>0 " *
+            "or populate LensPlanes manually.")
         xg, yg = first(values(li.LensPlanes))
+        pixel_scale = (xg[end, 1] - xg[1, 1]) / (size(xg, 1) - 1)
+        return xg, yg, pixel_scale
+    end
+
+
+    # ────  PointImage ────────────────────────────────────────────
+
+    """
+        img = render_lens(pt::PointImage, li::LensInstance, lens_model;
+                          psf=GaussianPSF(fwhm=0.052), half=7,
+                          method=:supersample, n_sub=5)
+
+    Render a point source through `lens_model`.  Pipeline:
+
+    1. `LensSolver.solve_images` → image positions + magnification
+    2. `LensPSF.render_point!`     → sub-pixel PSF placement per image
+
+    The output grid and pixel scale come from `li.LensPlanes`.
+    """
+    function render_lens(pt::PointImage, li::LensInstance, lens_model;
+                         psf            = LensPSF.GaussianPSF(fwhm=0.052),
+                         half::Int      = 7,
+                         method::Symbol  = :supersample,
+                         n_sub::Int     = 5)
+
+        xg, yg, pixel_scale = _grid_from_instance(li)
         ny, nx = size(xg)
 
-        # 2. Solve lens equation
-        images = LensSolver.solve_images(lens_model, beta_x, beta_y)
+        # Solve lens equation
+        images = LensSolver.solve_images(lens_model, pt.beta_x, pt.beta_y)
 
-        # 3. Render each image
-        # Compute grid bounds for arcsec → pixel conversion
-        x_min_arcsec = xg[1, 1]
-        y_min_arcsec = yg[1, 1]
+        # Arcsec → pixel coordinate origin
+        x_min = xg[1, 1]
+        y_min = yg[1, 1]
 
         img = zeros(Float64, ny, nx)
         for (tx, ty, mu) in images
-            F = flux * abs(mu)
-            # Convert arcsec → 1-indexed pixel coordinate
-            px = (tx - x_min_arcsec) / pixel_scale + 1.0
-            py = (ty - y_min_arcsec) / pixel_scale + 1.0
+            F = pt.flux * abs(mu)
+            px = (tx - x_min) / pixel_scale + 1.0
+            py = (ty - y_min) / pixel_scale + 1.0
             LensPSF.render_point!(img, psf, px, py, F;
                                   pixel_scale, half, method, n_sub)
         end
-
         return img
+    end
+
+
+    # ────  ExtendedSource ────────────────────────────────────────
+
+    """
+        img = render_lens(src::ExtendedSource, li::LensInstance, lens_model;
+                          psf=nothing, kwargs...)
+
+    Ray-trace the lens model and evaluate the source profile on
+    the source-plane grid.
+
+    If `psf` is provided, the result is convolved with the PSF
+    (requires `conv_psf` to be defined for that PSF type).
+    Otherwise the unconvolved source-plane flux is returned.
+    """
+    function render_lens(src::ExtendedSource, li::LensInstance,
+                         lens_model; psf=nothing, kwargs...)
+
+        xg, yg, pixel_scale = _grid_from_instance(li)
+
+        # Ray-trace: beta = theta - alpha(theta)
+        alphax, alphay = lens_derivative(lens_model, xg, yg; kwargs...)
+        betax = xg .- alphax
+        betay = yg .- alphay
+
+        result = evaluate_source(src, betax, betay)
+
+        if psf !== nothing
+            result = LensPSF.conv_psf(result, psf, pixel_scale)
+        end
+        return result
+    end
+
+
+    # ────  CompositeImage ────────────────────────────────────────
+
+    """
+        img = render_lens(src::CompositeImage, li::LensInstance, lens_model;
+                          kwargs...)
+
+    Sum the `render_lens` output of each component.  Keyword arguments
+    (psf, half, method, n_sub, etc.) are forwarded to each component.
+    """
+    function render_lens(src::CompositeImage, li::LensInstance,
+                         lens_model; kwargs...)
+
+        xg, yg, _ = _grid_from_instance(li)
+        ny, nx = size(xg)
+        result = zeros(Float64, ny, nx)
+
+        for component in src.sources
+            result .+= render_lens(component, li, lens_model; kwargs...)
+        end
+        return result
+    end
+
+
+    # ────  Backward-compat: add_point ────────────────────────────
+
+    """
+        img = add_point(li, lens_model, flux, beta_x, beta_y; kwargs...)
+
+    Deprecated convenience wrapper.  Equivalent to:
+
+        render_lens(PointImage(flux=flux, beta_x=beta_x, beta_y=beta_y),
+                    li, lens_model; kwargs...)
+
+    Prefer `render_lens(point_image, li, lens; ...)` in new code.
+    """
+    function add_point(li::LensInstance, lens_model,
+                       flux::Real, beta_x::Real, beta_y::Real; kwargs...)
+        pt = PointImage(flux=Float64(flux),
+                        beta_x=Float64(beta_x),
+                        beta_y=Float64(beta_y))
+        return render_lens(pt, li, lens_model; kwargs...)
     end
 
 end

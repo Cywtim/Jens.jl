@@ -21,7 +21,8 @@ module Jens
     include("models/lens/LensLOS.jl")     # LOS tidal matrix
     include("utils/LensPSF.jl")           # PSF must precede Generator + Solver
     include("utils/LensSolver.jl")        # lens equation solver
-    include("core/LensGenerator.jl")      # needs LensPSF + LensSolver
+    include("models/light/LightModel.jl")  # AbstractLight types needed by Generator
+    include("core/LensGenerator.jl")      # needs LensPSF + LensSolver + LightModel
     include("utils/LensNoise.jl")
     include("utils/WFC3.jl")
     include("utils/MGE.jl")
@@ -30,7 +31,6 @@ module Jens
     #  Models
     # ═══════════════════════════════════════════════════════════════
     include("models/lens/LensModel.jl")
-    include("models/light/LightModel.jl")
 
     # ═══════════════════════════════════════════════════════════════
     #  Plotting
