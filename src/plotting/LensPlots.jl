@@ -1,6 +1,8 @@
 module LensPlots
 
-    using Plots
+    import Plots
+    using Plots 
+    export Plots           # re-export the Plots module so `using LensPlots` gives full Plots access
 
     # ═══════════════════════════════════════════════════════════════
     #  LensPlots — composable lensing visualisation for Jens.jl
@@ -59,13 +61,13 @@ module LensPlots
     end
     =#
 
-    export LensCanvas
+export LensCanvas
     export PlotPlane!, PlotPoints!
     export PlotCriticalCurve!, PlotCaustic!
     export PlotFermat, PlotMagnification
     export PlotLens
     export PlotVec!
-
+    export arrow          # re-export from Plots for PlotVec!
     # ═══════════════════════════════════════════════════════════════
     #  Create canvas
     # ═══════════════════════════════════════════════════════════════

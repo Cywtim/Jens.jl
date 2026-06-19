@@ -89,3 +89,17 @@ CompositeImage(srcs::AbstractLight...) = CompositeImage(srcs)
 function evaluate_source(src::ExtendedSource, x, y)
     return src.profile(x, y; src.params...)
 end
+
+
+# ═══════════════════════════════════════════════════════════════
+#  _render_source — LensBase dispatch extension
+#
+#  Extended by LightModel so that LensRayShooting can accept
+#  AbstractLight structs in addition to bare Functions.
+# ═══════════════════════════════════════════════════════════════
+
+import ..LensBase: _render_source
+
+function _render_source(src::ExtendedSource, x, y; kwargs...)
+    return src.profile(x, y; src.params...)
+end

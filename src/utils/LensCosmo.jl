@@ -1,6 +1,8 @@
 module LensCosmo
-    using Cosmology
 
+    import Cosmology
+    using Cosmology
+    export Cosmology
     export angular_diameter_distance, lens_distance_ratio
 
     # ═══════════════════════════════════════════════════════════════

@@ -12,6 +12,7 @@ module LensBase
     export AbstractLens, LensModule, SingleModel
     export __lensmodel__
     export lens_derivative, lens_hessian, lens_potential, lens_check
+    export _render_source
 
     # ═══════════════════════════════════════════════════════════════
     #  LensBase — Core lensing framework
@@ -41,7 +42,9 @@ module LensBase
     #  accept any lens type without coupling.
     # ═══════════════════════════════════════════════════════════════
 
-    abstract type AbstractLens end
+    abstract type 
+        AbstractLens 
+    end
 
     # ═══════════════════════════════════════════════════════════════
     #  __lensmodel__ trait — compile-time guard against invalid Modules
@@ -244,6 +247,17 @@ function LensMagnificationR(thetax::AbstractArray,
 
     end
 
+    # ═══════════════════════════════════════════════════════════════
+    #  _render_source — dispatch helper for LensRayShooting
+    #
+    #  Accepts both bare Function (old API) and AbstractLight
+    #  subtypes (new API, extended by LightModel).
+    # ═══════════════════════════════════════════════════════════════
+
+    function _render_source(f::Function, x, y; kwargs...)
+        return f(x, y; kwargs...)
+    end
+
     function LensRayShootingPosition(
       thetax::AbstractArray,
          thetay::AbstractArray;
@@ -300,14 +314,19 @@ function LensMagnificationR(thetax::AbstractArray,
     function LensRayShooting(thetax::AbstractArray,
          thetay::AbstractArray;
           LensModel, LensKwargs::Dict=Dict(),
-             SourceProfile::Function, SourceKwargs::Dict=Dict(),
+             SourceProfile, SourceKwargs::Dict=Dict(),
                z_source=nothing)
 
-        alphax, alphay = lens_derivative(LensModel, thetax, thetay; z_source=z_source, LensKwargs...)
+        # If SourceProfile carries redshift (e.g. LightPlane), auto-detect
+        zs = z_source !== nothing ? z_source :
+             (SourceProfile isa AbstractDict ? nothing :  # Dicts don't have .z
+              hasproperty(SourceProfile, :z) ? SourceProfile.z : nothing)
+
+        alphax, alphay = lens_derivative(LensModel, thetax, thetay; z_source=zs, LensKwargs...)
         betax = thetax .- alphax
         betay = thetay .- alphay
 
-        light = SourceProfile(betax, betay; SourceKwargs...)
+        light = _render_source(SourceProfile, betax, betay; SourceKwargs...)
 
         return light
 
@@ -317,7 +336,7 @@ function LensMagnificationR(thetax::AbstractArray,
       thetax::AbstractArray, thetay::AbstractArray;
           LensModel,
             LensKwargs::Vector{Dict{Symbol, Float64}}=Dict{Symbol, Float64}[],
-              SourceProfile::Function, SourceKwargs::Dict=Dict(),
+              SourceProfile, SourceKwargs::Dict=Dict(),
                 z_source=nothing)
 
         xl = [thetax]
@@ -350,7 +369,7 @@ function LensMagnificationR(thetax::AbstractArray,
         # 最终源平面位置: 最后一层光线位置
         betax = xl[end]
         betay = yl[end]
-        light = SourceProfile(betax, betay; SourceKwargs...)
+        light = _render_source(SourceProfile, betax, betay; SourceKwargs...)
 
         return light
 

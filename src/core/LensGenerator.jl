@@ -7,7 +7,9 @@ module LensGenerator
     using Jens.LensSolver
     using Jens.LightModel: AbstractLight, ExtendedSource, PointImage, CompositeImage, evaluate_source
 
-    import ..LensBase: AbstractLens, lens_derivative, lens_hessian, lens_potential, lens_check
+    import ..LensBase
+    import ..LensBase: AbstractLens, lens_derivative, lens_hessian, lens_potential, lens_check,
+                       _render_source
     import ..LensCosmo: lens_distance_ratio
 
     export LensedPlane, MultiLensedPlane, LightPlane, MultiLightPlane
@@ -112,6 +114,18 @@ module LensGenerator
     function MultiLightPlane(planes::Pair{<:AbstractLight, <:Real}...)
         nt = Tuple((p.first, Float64(p.second)) for p in planes)
         return MultiLightPlane{typeof(nt)}(nt)
+    end
+
+    # ═══════════════════════════════════════════════════════════════
+    #  _render_source bridge — unwrap LightPlane for LensRayShooting
+    #
+    #  LensRayShooting auto-detects z_source from LightPlane.z
+    #  (see LensBase.jl), and this method unwraps .light on the
+    #  source-plane side.  z_source is handled upstream.
+    # ═══════════════════════════════════════════════════════════════
+
+    function _render_source(lp::LightPlane, x, y; kwargs...)
+        return _render_source(lp.light, x, y; kwargs...)
     end
 
     # ==============================================================
