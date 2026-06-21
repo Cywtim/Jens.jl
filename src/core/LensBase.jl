@@ -177,7 +177,7 @@ module LensBase
 
     function LensFermat(
       xg::AbstractMatrix, yg::AbstractMatrix,
-         beta=[0., 0.]; LensModel, LensKwargs::Dict=Dict(), z_source=nothing)
+         beta=[0., 0.]; LensModel, LensKwargs=NamedTuple(), z_source=nothing)
         
         phi = lens_potential(LensModel, xg, yg; z_source=z_source, LensKwargs...)
 
@@ -189,7 +189,7 @@ module LensBase
 
     function LensDeflection(
       xg::AbstractArray, yg::AbstractArray;
-         LensModel, LensKwargs::Dict=Dict(), z_source=nothing )
+         LensModel, LensKwargs=NamedTuple(), z_source=nothing )
         #=?=#
         alpha_x, alpha_y = lens_derivative(LensModel, xg, yg; z_source=z_source, LensKwargs...)
         
@@ -199,7 +199,7 @@ module LensBase
 
     function LensPlane(
       xg::AbstractArray, yg::AbstractArray;
-       LensModel, LensKwargs::Dict=Dict(), z_source=nothing )
+       LensModel, LensKwargs=NamedTuple(), z_source=nothing )
       #=?=#
       alpha_x, alpha_y = lens_derivative(LensModel, xg, yg; z_source=z_source, LensKwargs...)
       
@@ -212,7 +212,7 @@ module LensBase
 
 function LensMagnificationR(thetax::AbstractArray,
        thetay::AbstractArray;
-        LensModel, LensKwargs::Dict=Dict(), z_source=nothing)
+        LensModel, LensKwargs=NamedTuple(), z_source=nothing)
    
            h_xx, h_xy, h_yy = lens_hessian(LensModel, thetax, thetay; z_source=z_source, LensKwargs...)
            
@@ -224,7 +224,7 @@ function LensMagnificationR(thetax::AbstractArray,
 
     function LensDetJacobian(thetax::AbstractArray,
       thetay::AbstractArray;
-       LensModel, LensKwargs::Dict=Dict(), z_source=nothing)
+       LensModel, LensKwargs=NamedTuple(), z_source=nothing)
 
           h_xx, h_xy, h_yy = lens_hessian(LensModel, thetax, thetay; z_source=z_source, LensKwargs...)
           
@@ -236,7 +236,7 @@ function LensMagnificationR(thetax::AbstractArray,
 
     function LensMagnification(thetax::AbstractArray,
       thetay::AbstractArray;
-       LensModel, LensKwargs::Dict=Dict(), z_source=nothing)
+       LensModel, LensKwargs=NamedTuple(), z_source=nothing)
 
           h_xx, h_xy, h_yy = lens_hessian(LensModel, thetax, thetay; z_source=z_source, LensKwargs...)
           
@@ -261,7 +261,7 @@ function LensMagnificationR(thetax::AbstractArray,
     function LensRayShootingPosition(
       thetax::AbstractArray,
          thetay::AbstractArray;
-          LensModel, LensKwargs::Dict=Dict(), z_source=nothing)
+          LensModel, LensKwargs=NamedTuple(), z_source=nothing)
 
         alphax, alphay = lens_derivative(LensModel, thetax, thetay; z_source=z_source, LensKwargs...)
         betax = thetax .- alphax
@@ -313,8 +313,8 @@ function LensMagnificationR(thetax::AbstractArray,
 
     function LensRayShooting(thetax::AbstractArray,
          thetay::AbstractArray;
-          LensModel, LensKwargs::Dict=Dict(),
-             SourceProfile, SourceKwargs::Dict=Dict(),
+          LensModel, LensKwargs=NamedTuple(),
+             SourceProfile, SourceKwargs=NamedTuple(),
                z_source=nothing)
 
         # If SourceProfile carries redshift (e.g. LightPlane), auto-detect
@@ -336,7 +336,7 @@ function LensMagnificationR(thetax::AbstractArray,
       thetax::AbstractArray, thetay::AbstractArray;
           LensModel,
             LensKwargs::Vector{Dict{Symbol, Float64}}=Dict{Symbol, Float64}[],
-              SourceProfile, SourceKwargs::Dict=Dict(),
+              SourceProfile, SourceKwargs=NamedTuple(),
                 z_source=nothing)
 
         xl = [thetax]
@@ -377,7 +377,7 @@ function LensMagnificationR(thetax::AbstractArray,
 
 
     function LensCriticalCurve(; 
-      LensModel, LensKwargs::Dict=Dict(), hperr::Float64=0.01, 
+      LensModel, LensKwargs=NamedTuple(), hperr::Float64=0.01, 
         r_max::Float64=2., r_bins::Int=4000, theta_bins::Int=4000,
           z_source=nothing)
 
@@ -400,7 +400,7 @@ function LensMagnificationR(thetax::AbstractArray,
     end
 
     function LensCaustic(; 
-        LensModel, LensKwargs::Dict=Dict(), hperr::Float64=0.01, 
+        LensModel, LensKwargs=NamedTuple(), hperr::Float64=0.01, 
             r_max::Float64=2., r_bins::Int=4000, theta_bins::Int=4000,
               z_source=nothing)
 
@@ -447,7 +447,7 @@ function LensMagnificationR(thetax::AbstractArray,
     """
     function _hp_at!(cache::Dict{Tuple{Float64,Float64},Float64},
                       x::Float64, y::Float64,
-                      LensModel, LensKwargs::Dict,
+                      LensModel, LensKwargs=NamedTuple(),
                       z_source=nothing)
         key = (x, y)
         if haskey(cache, key)
@@ -465,7 +465,7 @@ function LensMagnificationR(thetax::AbstractArray,
     Evaluate µ⁻¹ at the four corners of the cell [x1,x2]×[y1,y2].
     Corners: lower-left, lower-right, upper-left, upper-right.
     """
-    function _cell_hp!(cache, x1, y1, x2, y2, LensModel, LensKwargs, z_source=nothing)
+    function _cell_hp!(cache, x1, y1, x2, y2, LensModel, LensKwargs=NamedTuple(), z_source=nothing)
         return (
             _hp_at!(cache, x1, y1, LensModel, LensKwargs, z_source),
             _hp_at!(cache, x2, y1, LensModel, LensKwargs, z_source),
@@ -536,7 +536,7 @@ function LensMagnificationR(thetax::AbstractArray,
     **Returns**: (ccx, ccy) — Float64 vectors of critical-curve points.
     """
     function LensAdaptiveCriticalCurve(;
-        LensModel, LensKwargs::Dict=Dict(),
+        LensModel, LensKwargs=NamedTuple(),
         xlim::NTuple{2,Float64}=(-2.0, 2.0), ylim::NTuple{2,Float64}=(-2.0, 2.0),
         initial_nx::Int=16, initial_ny::Int=16,
         max_depth::Int=6, hp_threshold::Float64=1e-4,
@@ -617,7 +617,7 @@ function LensMagnificationR(thetax::AbstractArray,
     **Returns**: (csx, csy) — Float64 vectors of caustic points.
     """
     function LensAdaptiveCaustic(;
-        LensModel, LensKwargs::Dict=Dict(),
+        LensModel, LensKwargs=NamedTuple(),
         xlim::NTuple{2,Float64}=(-2.0, 2.0), ylim::NTuple{2,Float64}=(-2.0, 2.0),
         initial_nx::Int=16, initial_ny::Int=16,
         max_depth::Int=6, hp_threshold::Float64=1e-4,

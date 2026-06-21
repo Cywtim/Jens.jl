@@ -79,13 +79,16 @@ module LensUtils
         ndgrid(x, y)
 
     Build 2D grid matrices from 1D vectors (like MATLAB's ndgrid).
+    Uses broadcasting — works on both CPU and GPU arrays.
     """
     function ndgrid(x::AbstractVector{T}, y::AbstractVector{T}) where T
         nx, ny = length(x), length(y)
-        X = [x[i] for i in 1:nx, j in 1:ny]
-        Y = [y[j] for i in 1:nx, j in 1:ny]
+        X = similar(x, T, nx, ny)
+        Y = similar(y, T, nx, ny)
+        X .= reshape(x, :, 1)
+        Y .= reshape(y, 1, :)
         return X, Y
-    end
+            end
 
     # ═══════════════════════════════════════════════════════════════
     #  3. ROTATION

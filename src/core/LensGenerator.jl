@@ -327,7 +327,6 @@ module LensGenerator
         return Grid(pix_n, pix_size, xg, yg)
     end
 
-
     # ═══════════════════════════════════════════════════════════════
     #  LensInstance
     # ═══════════════════════════════════════════════════════════════
@@ -500,7 +499,6 @@ module LensGenerator
         end
         return result
     end
-
 
     # ────  CompositeImage ────────────────────────────────────────
 
