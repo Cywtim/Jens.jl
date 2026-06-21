@@ -1,7 +1,7 @@
 module SIS
     
     
-    function LensCheck(; theta_E::Float64, xcentre::Float64=0., ycentre::Float64=0.)
+    function LensCheck(; theta_E::Real, xcentre::Real=0., ycentre::Real=0.)
 
         para = [theta_E, xcentre, ycentre]
 
@@ -14,7 +14,7 @@ module SIS
 
 
     function LensPotential(xg::AbstractArray, yg::AbstractArray;
-         theta_E::Float64, xcentre::Float64=0., ycentre::Float64=0.)
+         theta_E::Real, xcentre::Real=0., ycentre::Real=0.)
         # =============================================================
         #   The mass profile for singular isothermal ellipsoid (SIE)
         #
@@ -35,16 +35,14 @@ module SIS
 
 
     function LensDerivative(xg::AbstractArray, yg::AbstractArray;
-         theta_E::Float64, xcentre::Float64=0., ycentre::Float64=0.)
+         theta_E::Real, xcentre::Real=0., ycentre::Real=0.)
 
         xsh = xg .- xcentre
         ysh = yg .- ycentre
 
         R = sqrt.( xsh.^2 .+ ysh.^2 )
-        a = zeros(eltype(R), size(R))
-        r = R[R.>0.]  # in the SIS regime
-        a[R.==0.] .= 0
-        a[R.>0.] .= theta_E ./ r
+        T = promote_type(eltype(R), typeof(theta_E))
+        a = @. ifelse(R > 0, theta_E / R, zero(T))
 
         f_x = a .* xsh
         f_y = a .* ysh
@@ -54,7 +52,7 @@ module SIS
 
     #= 旧版本 (有 broadcast bug 和指数错误):
     function LensHessian(xg::AbstractArray, yg::AbstractArray;
-         theta_E::Float64, xcentre::Float64=0., ycentre::Float64=0.)
+         theta_E::Real, xcentre::Real=0., ycentre::Real=0.)
 
         xsh = xg - xcentre
         ysh = yg - ycentre
@@ -73,7 +71,7 @@ module SIS
     end
     =#
     function LensHessian(xg::AbstractArray, yg::AbstractArray;
-         theta_E::Float64, xcentre::Float64=0., ycentre::Float64=0.)
+         theta_E::Real, xcentre::Real=0., ycentre::Real=0.)
         # SIS Hessian:
         #   f_xx = theta_E * y^2 / R^3
         #   f_yy = theta_E * x^2 / R^3
@@ -85,9 +83,8 @@ module SIS
 
         R3 = sqrt.(xsh.^2 .+ ysh.^2) .^ 3
 
-        h = zeros(eltype(R3), size(R3))
-        mask = R3 .> 0
-        h[mask] .= theta_E ./ R3[mask]
+        T = promote_type(eltype(R3), typeof(theta_E))
+        h = @. ifelse(R3 > 0, theta_E / R3, zero(T))
 
         f_xx = ysh .* ysh .* h
         f_yy = xsh .* xsh .* h

@@ -291,9 +291,21 @@ module ComLens
         return CombinedLens{typeof(models), typeof(paramss)}(models, paramss)
     end
 
+    # Helper: promoted element type from grid + all baked params
+    @inline function _accum_eltype(cl::CombinedLens, x)
+        T = eltype(x)
+        for p in cl.params
+            for v in values(p)
+                T = promote_type(T, v isa AbstractArray ? eltype(v) : typeof(v))
+            end
+        end
+        return T
+    end
+
     function LensDerivative(cl::CombinedLens, x, y; kwargs...)
-        fx = zeros(Float64, size(x))
-        fy = zeros(Float64, size(y))
+        T = _accum_eltype(cl, x)
+        fx = similar(x, T); fx .= zero(T)
+        fy = similar(y, T); fy .= zero(T)
         for (m, p) in zip(cl.models, cl.params)
             fxi, fyi = m.LensDerivative(x, y; p...)
             fx .+= fxi; fy .+= fyi
@@ -302,9 +314,10 @@ module ComLens
     end
 
     function LensHessian(cl::CombinedLens, x, y; kwargs...)
-        fxx = zeros(Float64, size(x))
-        fxy = zeros(Float64, size(x))
-        fyy = zeros(Float64, size(x))
+        T = _accum_eltype(cl, x)
+        fxx = similar(x, T); fxx .= zero(T)
+        fxy = similar(x, T); fxy .= zero(T)
+        fyy = similar(x, T); fyy .= zero(T)
         for (m, p) in zip(cl.models, cl.params)
             fxx_i, fxy_i, fyy_i = m.LensHessian(x, y; p...)
             fxx .+= fxx_i; fxy .+= fxy_i; fyy .+= fyy_i
@@ -313,7 +326,8 @@ module ComLens
     end
 
     function LensMass(cl::CombinedLens, x, y; kwargs...)
-        psi = zeros(Float64, size(x))
+        T = _accum_eltype(cl, x)
+        psi = similar(x, T); psi .= zero(T)
         for (m, p) in zip(cl.models, cl.params)
             f = isdefined(m, :LensPotential) ? m.LensPotential : m.LensMass
             psi .+= f(x, y; p...)
@@ -343,8 +357,9 @@ module ComLens
     # ═══════════════════════════════════════════════════════════
 
     function lens_derivative(cl::CombinedLens, x, y; z_source=nothing, kwargs...)
-        fx = zeros(Float64, size(x))
-        fy = zeros(Float64, size(y))
+        T = _accum_eltype(cl, x)
+        fx = similar(x, T); fx .= zero(T)
+        fy = similar(y, T); fy .= zero(T)
         for (m, p) in zip(cl.models, cl.params)
             fxi, fyi = m.LensDerivative(x, y; p...)
             fx .+= fxi; fy .+= fyi
@@ -353,9 +368,10 @@ module ComLens
     end
 
     function lens_hessian(cl::CombinedLens, x, y; z_source=nothing, kwargs...)
-        fxx = zeros(Float64, size(x))
-        fxy = zeros(Float64, size(x))
-        fyy = zeros(Float64, size(x))
+        T = _accum_eltype(cl, x)
+        fxx = similar(x, T); fxx .= zero(T)
+        fxy = similar(x, T); fxy .= zero(T)
+        fyy = similar(x, T); fyy .= zero(T)
         for (m, p) in zip(cl.models, cl.params)
             fxx_i, fxy_i, fyy_i = m.LensHessian(x, y; p...)
             fxx .+= fxx_i; fxy .+= fxy_i; fyy .+= fyy_i
@@ -364,7 +380,8 @@ module ComLens
     end
 
     function lens_potential(cl::CombinedLens, x, y; z_source=nothing, kwargs...)
-        psi = zeros(Float64, size(x))
+        T = _accum_eltype(cl, x)
+        psi = similar(x, T); psi .= zero(T)
         for (m, p) in zip(cl.models, cl.params)
             f = isdefined(m, :LensPotential) ? m.LensPotential : m.LensMass
             psi .+= f(x, y; p...)

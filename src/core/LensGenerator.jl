@@ -182,6 +182,18 @@ module LensGenerator
     @inline _plane_kwargs(plane::Tuple, shared_kwargs) =
         merge(NamedTuple(shared_kwargs), plane[3])
 
+    # Helper: promoted element type from grid + all plane params
+    @inline function _mlp_eltype(ml::MultiLensedPlane, x)
+        T = eltype(x)
+        for (_, z, kws) in ml.planes
+            T = promote_type(T, typeof(z))
+            for v in values(kws)
+                T = promote_type(T, v isa AbstractArray ? eltype(v) : typeof(v))
+            end
+        end
+        return T
+    end
+
     # ── Internal: shared ray-tracing ──────────────────────────
     function _trace_rays!(aphys_x, aphys_y, thetax, thetay,
                           z_planes, ml::MultiLensedPlane, x, y; kwargs...)
@@ -223,8 +235,9 @@ module LensGenerator
         _trace_rays!(aphys_x, aphys_y, thetax, thetay, z_planes, ml, x, y; kwargs...)
 
         N = length(ml.planes)
-        alpha_tot_x = zeros(Float64, size(x))
-        alpha_tot_y = zeros(Float64, size(y))
+        T = _mlp_eltype(ml, x)
+        alpha_tot_x = similar(x, T); alpha_tot_x .= zero(T)
+        alpha_tot_y = similar(y, T); alpha_tot_y .= zero(T)
         for i in 1:N
             ratio = lens_distance_ratio(ml.cosmology, z_planes[i], ml.z_source)
             alpha_tot_x .+= ratio .* aphys_x[i]
@@ -250,10 +263,11 @@ module LensGenerator
         end
 
         # Recursive Jacobian: A_1 = I, A_{k+1} = I - sum beta * H * A
-        Axx = ones(Float64, size(x))
-        Axy = zeros(Float64, size(x))
-        Ayx = zeros(Float64, size(x))
-        Ayy = ones(Float64, size(x))
+        T = _mlp_eltype(ml, x)
+        Axx = similar(x, T); Axx .= one(T)
+        Axy = similar(x, T); Axy .= zero(T)
+        Ayx = similar(x, T); Ayx .= zero(T)
+        Ayy = similar(x, T); Ayy .= one(T)
         for i in 1:N
             beta_ratio = lens_distance_ratio(ml.cosmology, z_planes[i], ml.z_source)
             kxx = beta_ratio .* Hxx[i]
@@ -274,7 +288,8 @@ module LensGenerator
         aphys_x, aphys_y, thetax, thetay, z_planes = _alloc_ray_buffers(ml, x, y)
         _trace_rays!(aphys_x, aphys_y, thetax, thetay, z_planes, ml, x, y; kwargs...)
 
-        psi = zeros(Float64, size(x))
+        T = _mlp_eltype(ml, x)
+        psi = similar(x, T); psi .= zero(T)
         for i in 1:length(ml.planes)
             kwi = _plane_kwargs(ml.planes[i], kwargs)
             ratio = lens_distance_ratio(ml.cosmology, z_planes[i], ml.z_source)

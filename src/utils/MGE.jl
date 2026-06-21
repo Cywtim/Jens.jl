@@ -26,28 +26,20 @@ module MGE
     #  gamma(R)      = kappa_bar(R) - kappa(R)
     # ═══════════════════════════════════════════════════════════════
 
-    function _circgauss_deflection(x, y, kappa0::Float64, sigma::Float64)
+    function _circgauss_deflection(x, y, kappa0::Real, sigma::Real)
         R2 = @. x^2 + y^2
-        # For R near zero, alpha → kappa0 * R (linear, no singularity)
-        alpha = similar(R2)
-        small = R2 .< 1e-20
-        alpha[small] .= kappa0
-        invR2 = @. 1.0 / R2
-        invR2[small] .= 0.0
+        invR2 = @. ifelse(R2 < 1e-20, 0.0, 1.0 / R2)
         fac = @. kappa0 * 2.0 * sigma^2
         expfac = @. exp(-R2 / (2.0 * sigma^2))
-        alpha_nonzero = @. fac * (1.0 - expfac) * invR2
-        alpha[.!small] .= alpha_nonzero[.!small]
+        alpha = @. ifelse(R2 < 1e-20, kappa0, fac * (1.0 - expfac) * invR2)
         ax = @. alpha * x
         ay = @. alpha * y
         return ax, ay
     end
 
-    function _circgauss_hessian(x, y, kappa0::Float64, sigma::Float64)
+    function _circgauss_hessian(x, y, kappa0::Real, sigma::Real)
         R2 = @. x^2 + y^2
-        small = R2 .< 1e-20
-        safe_R2 = copy(R2)
-        safe_R2[small] .= 1.0
+        safe_R2 = @. ifelse(R2 < 1e-20, 1.0, R2)
 
         invR2 = @. 1.0 / safe_R2
         invR4 = @. invR2 * invR2
@@ -56,26 +48,20 @@ module MGE
         expfac = @. exp(-safe_R2 / (2.0 * sigma2))
 
         kappa = @. kappa0 * expfac
-
         kappa_bar = @. kappa0 * 2.0 * sigma2 * invR2 * (1.0 - expfac)
-        gamma_iso = @. kappa_bar - kappa  # isotropic gamma (|gamma|)
+        gamma_iso = @. kappa_bar - kappa
 
         cos2phi = @. (x^2 - y^2) * invR2
         sin2phi = @. 2.0 * x * y * invR2
 
-        f_xx = @. kappa + gamma_iso * cos2phi
-        f_yy = @. kappa - gamma_iso * cos2phi
-        f_xy = @. gamma_iso * sin2phi
-
-        # Fix small-R limit: Hessian → kappa0/2 * identity
-        f_xx[small] .= kappa0 / 2.0
-        f_yy[small] .= kappa0 / 2.0
-        f_xy[small] .= 0.0
+        f_xx = @. ifelse(R2 < 1e-20, kappa0 / 2.0, kappa + gamma_iso * cos2phi)
+        f_yy = @. ifelse(R2 < 1e-20, kappa0 / 2.0, kappa - gamma_iso * cos2phi)
+        f_xy = @. ifelse(R2 < 1e-20, 0.0,           gamma_iso * sin2phi)
 
         return f_xx, f_xy, f_yy
     end
 
-    function _circgauss_potential(x, y, kappa0::Float64, sigma::Float64)
+    function _circgauss_potential(x, y, kappa0::Real, sigma::Real)
         R2 = @. x^2 + y^2
         sigma2 = sigma^2
         # potential = kappa0 * sigma^2 * (Ei(-R^2/(2*sigma^2)) - log(R^2/(2*sigma^2)) - gamma)
@@ -141,8 +127,9 @@ module MGE
     end
 
     function circular_gaussian_lens(x, y, lens::MGECombinedLens; what::Symbol=:deflection)
-        ax = zeros(size(x))
-        ay = zeros(size(y))
+        T = promote_type(eltype(x), eltype(lens.kappa0s), eltype(lens.sigmas))
+        ax = similar(x, T); ax .= zero(T)
+        ay = similar(y, T); ay .= zero(T)
         if what == :deflection || what == :all
             for (sigma, kappa0) in zip(lens.sigmas, lens.kappa0s)
                 dax, day = _circgauss_deflection(x, y, kappa0, sigma)
@@ -153,9 +140,10 @@ module MGE
         end
 
         if what == :hessian || what == :all
-            fxx = zeros(size(x))
-            fxy = zeros(size(x))
-            fyy = zeros(size(x))
+            T = promote_type(eltype(x), eltype(lens.kappa0s), eltype(lens.sigmas))
+            fxx = similar(x, T); fxx .= zero(T)
+            fxy = similar(x, T); fxy .= zero(T)
+            fyy = similar(x, T); fyy .= zero(T)
             for (sigma, kappa0) in zip(lens.sigmas, lens.kappa0s)
                 hxx, hxy, hyy = _circgauss_hessian(x, y, kappa0, sigma)
                 fxx .+= hxx

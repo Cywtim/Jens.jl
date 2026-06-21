@@ -1,7 +1,7 @@
 module NIS
     
     
-    function LensCheck(; theta_E::Float64, s::Float64, xcentre::Float64=0., ycentre::Float64=0.)
+    function LensCheck(; theta_E::Real, s::Real, xcentre::Real=0., ycentre::Real=0.)
 
         para = [theta_E, s, xcentre, ycentre]
 
@@ -13,7 +13,7 @@ module NIS
     end
 
 
-    function LensPotential(xg , yg; theta_E::Float64, s::Float64, xcentre::Float64=0., ycentre::Float64=0.)
+    function LensPotential(xg , yg; theta_E::Real, s::Real, xcentre::Real=0., ycentre::Real=0.)
         #=
             The mass profile for singular isothermal ellipsoid (SIE)
 
@@ -34,7 +34,7 @@ module NIS
     end
 
 
-    function LensDerivative(xg, yg; theta_E::Float64, s::Float64, xcentre::Float64=0., ycentre::Float64=0.)
+    function LensDerivative(xg, yg; theta_E::Real, s::Real, xcentre::Real=0., ycentre::Real=0.)
 
         xsh = xg - xcentre
         ysh = yg - ycentre
@@ -51,7 +51,7 @@ module NIS
         return f_x, f_y
     end
 
-    function LensHessian(xg, yg; theta_E::Float64, s::Float64, xcentre::Float64=0., ycentre::Float64=0.)
+    function LensHessian(xg, yg; theta_E::Real, s::Real, xcentre::Real=0., ycentre::Real=0.)
 
         xsh = xg - xcentre
         ysh = yg - ycentre
