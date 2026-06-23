@@ -19,20 +19,23 @@ module LensLOS
     #                            10.1088/1475-7516/2021/08/024
     # ═══════════════════════════════════════════════════════════════
 
-    struct ExternalTidal
-        kappa_ext ::Float64   # external convergence
-        gamma1_ext::Float64   # external shear (gamma1 component)
-        gamma2_ext::Float64   # external shear (gamma2 component)
+    struct ExternalTidal{T<:Real}
+        kappa_ext ::T   # external convergence
+        gamma1_ext::T   # external shear (gamma1 component)
+        gamma2_ext::T   # external shear (gamma2 component)
     end
 
     # ── Convenience constructor: convergence only ──
-    ExternalTidal(kappa_ext::Float64) = ExternalTidal(kappa_ext, 0.0, 0.0)
+    ExternalTidal(kappa_ext::Real) = ExternalTidal(kappa_ext, zero(kappa_ext), zero(kappa_ext))
 
     # ── Keyword constructor ──
-    function ExternalTidal(; kappa_ext::Float64=0.0,
-                           gamma1_ext::Float64=0.0,
-                           gamma2_ext::Float64=0.0)
-        return ExternalTidal(kappa_ext, gamma1_ext, gamma2_ext)
+    function ExternalTidal(; kappa_ext::Real=0.0,
+                           gamma1_ext::Real=0.0,
+                           gamma2_ext::Real=0.0)
+        T = promote_type(typeof(kappa_ext), typeof(gamma1_ext), typeof(gamma2_ext))
+        return ExternalTidal{T}(convert(T, kappa_ext),
+                                convert(T, gamma1_ext),
+                                convert(T, gamma2_ext))
     end
 
     # ── Identity (no LOS effect) ──
@@ -43,9 +46,10 @@ module LensLOS
     # ═══════════════════════════════════════════════════════════════
 
     function _tidal_components(t::ExternalTidal)
-        T11 = 1.0 - t.kappa_ext - t.gamma1_ext
+        one_t = one(t.kappa_ext)
+        T11 = one_t - t.kappa_ext - t.gamma1_ext
         T12 =            - t.gamma2_ext   # = T21
-        T22 = 1.0 - t.kappa_ext + t.gamma1_ext
+        T22 = one_t - t.kappa_ext + t.gamma1_ext
         return (T11, T12, T22)
     end
 
@@ -116,9 +120,10 @@ module LensLOS
     function lens_potential(wt::WithTidal, x, y; z_source=nothing, kwargs...)
         psi_main = lens_potential(wt.lens, x, y; z_source=z_source, kwargs...)
         t = wt.tidal
-        psi_los = @. 0.5 * t.kappa_ext * (x^2 + y^2) +
-                      0.5 * t.gamma1_ext * (x^2 - y^2) +
-                           t.gamma2_ext * (x * y)
+        half_t = one(t.kappa_ext) / 2
+        psi_los = @. half_t * t.kappa_ext * (x^2 + y^2) +
+                     half_t * t.gamma1_ext * (x^2 - y^2) +
+                         t.gamma2_ext * (x * y)
         return psi_main .+ psi_los
     end
 

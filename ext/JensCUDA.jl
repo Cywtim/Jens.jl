@@ -11,6 +11,7 @@
 module JensCUDA
 
 using CUDA
+using CUDA.CUFFT
 using Jens
 using Jens.LensUtils: ndgrid
 using Jens.LensGenerator: Grid, GenGrid
@@ -18,6 +19,7 @@ using Jens.LensBase: lens_derivative
 using Jens.LensPSF
 using Jens.LightModel: ExtendedSource, evaluate_source
 import Jens.LensGenerator: render_lens
+import Jens.LensPSF: conv_psf, AbstractPSF, make_kernel, _default_half
 
 export GridGPU, GenGrid_GPU
 
@@ -81,9 +83,60 @@ function render_lens(src::ExtendedSource, grid::GridGPU,
     result = evaluate_source(src, betax, betay)
 
     if psf !== nothing
-        result = LensPSF.conv_psf(result, psf, pixel_scale)
+        result = conv_psf(result, psf, pixel_scale)
     end
     return result
+end
+
+# ═══════════════════════════════════════════════════════════════
+#  GPU-native PSF convolution — FFT-based
+#
+#  Overrides the CPU fallback in LensPSF.conv_psf for CuArray
+#  images. Uses CUFFT for element-wise frequency-domain
+#  multiplication, avoiding host↔device transfers.
+# ═══════════════════════════════════════════════════════════════
+
+"""
+    _fft_conv_same(image::CuArray{T,2}, kernel::AbstractMatrix) → CuArray{T,2}
+
+FFT-based "same" convolution. Pads both arrays, FFTs, multiplies,
+IFFTs, and crops to the original image size. The kernel is assumed
+to be centred (odd size).
+"""
+function _fft_conv_same(image::CuArray{T,2}, kernel::AbstractMatrix) where T
+    M, N = size(image)
+    K = size(kernel, 1)  # assume square kernel
+    @assert K == size(kernel, 2) && isodd(K) "kernel must be square and odd-sized"
+
+    # Full-convolution padded size
+    P_h, P_w = M + K - 1, N + K - 1
+
+    # Pad image to padded size
+    img_pad = CUDA.zeros(T, P_h, P_w)
+    img_pad[1:M, 1:N] .= image
+
+    # Pad flipped kernel to same size, placed at top-left
+    k_flip_cpu = reverse(reverse(kernel; dims=1); dims=2)
+    k_flip = CuArray{T}(k_flip_cpu)
+    kern_pad = CUDA.zeros(Complex{T}, P_h, P_w)
+    kern_pad[1:K, 1:K] .= k_flip
+
+    # FFT → multiply → IFFT
+    F_img  = fft(img_pad)
+    F_kern = fft(kern_pad)
+    full   = real(ifft(F_img .* F_kern))
+
+    # Crop "same" region: kernel centre → (kc, kc) where kc = (K+1)÷2
+    kc = (K + 1) ÷ 2
+    return full[kc:kc+M-1, kc:kc+N-1]
+end
+
+# Override conv_psf for CuArray images — GPU-native FFT path
+function conv_psf(image::CuArray{T,2}, psf::AbstractPSF,
+                  pixel_scale::Real; half::Int=0) where T
+    h = half > 0 ? half : _default_half(psf, pixel_scale)
+    kernel = make_kernel(psf, pixel_scale, h)
+    return _fft_conv_same(image, kernel)
 end
 
 end # module JensCUDA

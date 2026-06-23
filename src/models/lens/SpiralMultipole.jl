@@ -39,34 +39,34 @@ module SpiralMultipole
     # Fields
     - `m0_lens::MGECombinedLens`: axisymmetric (m=0) smooth component
     - `m::Int`: angular mode number (2 = bisymmetric spiral)
-    - `amplitude::Float64`: peak amplitude A₀ of the density-wave perturbation
-    - `R_cr::Float64`: corotation radius where the perturbation is strongest
-    - `delta_R::Float64`: Gaussian width of the radial annulus
-    - `pitch_angle::Float64`: pitch angle i_p in radians
-    - `R0::Float64`: reference radius for logarithmic spiral phase
+    - `amplitude::Real`: peak amplitude A₀ of the density-wave perturbation
+    - `R_cr::Real`: corotation radius where the perturbation is strongest
+    - `delta_R::Real`: Gaussian width of the radial annulus
+    - `pitch_angle::Real`: pitch angle i_p in radians
+    - `R0::Real`: reference radius for logarithmic spiral phase
 
     # Precomputed (via constructor)
     - `R_grid`, `psi_m_grid`, `dpsim_dR_grid`: radial interpolation tables
       for the m-th Green function and its derivative.
     """
-    struct SpiralMultipoleLens <: AbstractLens
+    struct SpiralMultipoleLens{T<:Real, V<:AbstractVector{<:AbstractFloat}} <: AbstractLens
         m0_lens::MGECombinedLens
         m::Int
-        amplitude::Float64
-        R_cr::Float64
-        delta_R::Float64
-        pitch_angle::Float64
-        R0::Float64
+        amplitude::T
+        R_cr::T
+        delta_R::T
+        pitch_angle::T
+        R0::T
         # Precomputed radial tables
-        R_grid::Vector{Float64}
-        psi_m_grid::Vector{Float64}
-        dpsim_dR_grid::Vector{Float64}
+        R_grid::V
+        psi_m_grid::V
+        dpsim_dR_grid::V
 
         function SpiralMultipoleLens(
             m0_lens::MGECombinedLens,
-            m::Int, amplitude::Float64,
-            R_cr::Float64, delta_R::Float64,
-            pitch_angle::Float64, R0::Float64;
+            m::Int, amplitude::Real,
+            R_cr::Real, delta_R::Real,
+            pitch_angle::Real, R0::Real;
             n_radial::Int=200,
         )
             @assert m >= 1 "m must be ≥ 1 (m=0 is handled by m0_lens)"
@@ -75,10 +75,15 @@ module SpiralMultipole
             @assert delta_R > 0 "delta_R must be positive"
 
             # -- build radial grid for Green function precomputation --
-            R_grid = _build_radial_grid(R_cr, delta_R; n=n_radial)
-            psi_m_grid, dpsim_dR_grid = _precompute_green(m, amplitude, R_cr, delta_R, R_grid)
+            # Green-function integrals need Float64 precision; computed once at construction.
+            R_grid = _build_radial_grid(Float64(R_cr), Float64(delta_R); n=n_radial)
+            psi_m_grid, dpsim_dR_grid = _precompute_green(
+                m, Float64(amplitude), Float64(R_cr), Float64(delta_R), R_grid)
 
-            new(m0_lens, m, amplitude, R_cr, delta_R, pitch_angle, R0,
+            new{Float64, typeof(R_grid)}(
+                m0_lens, m,
+                Float64(amplitude), Float64(R_cr), Float64(delta_R),
+                Float64(pitch_angle), Float64(R0),
                 R_grid, psi_m_grid, dpsim_dR_grid)
         end
     end
@@ -163,22 +168,44 @@ module SpiralMultipole
     #    f'(R) = m / (R · tan(i_p))
     # ═══════════════════════════════════════════════════════════════
 
-    @inline _spiral_phase(R::Float64, m::Int, pitch_angle::Float64, R0::Float64) =
+    @inline _spiral_phase(R::Real, m::Int, pitch_angle::Real, R0::Real) =
         m / tan(pitch_angle) * log(R / R0)
 
-    @inline _spiral_phase_deriv(R::Float64, m::Int, pitch_angle::Float64) =
+    @inline _spiral_phase_deriv(R::Real, m::Int, pitch_angle::Real) =
         m / (R * tan(pitch_angle))
 
     # ═══════════════════════════════════════════════════════════════
-    #  Inline linear interpolation (avoid Interpolations.jl dep)
+    #  Vectorized linear interpolation — GPU-safe via broadcast bins
+    #
+    #  Given sorted R_grid and precomputed values, interpolate every
+    #  element of R.  O(n_bins × n_pixels) but pure broadcast →
+    #  native GPU kernel with zero scalar indexing.
     # ═══════════════════════════════════════════════════════════════
 
-    @inline function _interp1(R::Float64, R_grid::Vector{Float64}, vals::Vector{Float64})
-        if R <= R_grid[1];  return vals[1];   end
-        if R >= R_grid[end]; return vals[end]; end
-        i = searchsortedfirst(R_grid, R)
-        t = (R - R_grid[i-1]) / (R_grid[i] - R_grid[i-1])
-        return vals[i-1] + t * (vals[i] - vals[i-1])
+    function _interp1_vec(R::AbstractArray, R_grid::AbstractVector, vals::AbstractVector)
+        T = eltype(R)
+        result = similar(R, T)
+        result .= convert(T, NaN)
+        n_bins = length(R_grid) - 1
+
+        # Interior bins — broadcast per bin, mask-based ifelse
+        for i in 1:n_bins
+            lo = convert(T, R_grid[i])
+            hi = convert(T, R_grid[i+1])
+            vlo = convert(T, vals[i])
+            vhi = convert(T, vals[i+1])
+            in_bin = @. (R >= lo) & (R < hi)
+            t = @. (R - lo) / (hi - lo)
+            result = @. ifelse(in_bin, vlo + t * (vhi - vlo), result)
+        end
+
+        # Boundary extrapolation
+        vfirst = convert(T, vals[1])
+        vlast  = convert(T, vals[end])
+        result = @. ifelse(R < R_grid[1],   vfirst, result)
+        result = @. ifelse(R >= R_grid[end], vlast,  result)
+
+        return result
     end
 
     # ═══════════════════════════════════════════════════════════════
@@ -200,34 +227,37 @@ module SpiralMultipole
         lens::SpiralMultipoleLens,
     )
         m = lens.m
-        A0 = lens.amplitude
-        i_p = lens.pitch_angle
-        R0 = lens.R0
+        T_scalar = promote_type(eltype(x), Float32)
+        i_p = convert(T_scalar, lens.pitch_angle)
+        R0  = convert(T_scalar, lens.R0)
 
-        for idx in eachindex(x)
-            R = sqrt(x[idx]^2 + y[idx]^2)
-            if R < 1e-20
-                continue
-            end
-            phi = atan(y[idx], x[idx])
+        R = @. sqrt(x^2 + y^2)
+        epsR = eps(eltype(R))
+        oneR = one(eltype(R))
+        R_safe = @. ifelse(R < epsR, oneR, R)
 
-            psi_m   = _interp1(R, lens.R_grid, lens.psi_m_grid)
-            dpsi_m  = _interp1(R, lens.R_grid, lens.dpsim_dR_grid)
-            f_R     = _spiral_phase(R, m, i_p, R0)
-            fprime  = _spiral_phase_deriv(R, m, i_p)
+        psi_m  = _interp1_vec(R, lens.R_grid, lens.psi_m_grid)
+        dpsi_m = _interp1_vec(R, lens.R_grid, lens.dpsim_dR_grid)
 
-            cos_arg = cos(m * phi - f_R)
-            sin_arg = sin(m * phi - f_R)
+        f_R    = @. m / tan(i_p) * log(R_safe / R0)
+        fprime = @. m / (R_safe * tan(i_p))
 
-            alpha_R = dpsi_m * cos_arg + psi_m * sin_arg * fprime
-            alpha_phi = -(m / R) * psi_m * sin_arg
+        cos_arg = @. cos(m * atan(y, x) - f_R)
+        sin_arg = @. sin(m * atan(y, x) - f_R)
 
-            cos_phi = x[idx] / R
-            sin_phi = y[idx] / R
+        alpha_R   = @. dpsi_m * cos_arg + psi_m * sin_arg * fprime
+        alpha_phi = @. -(m / R_safe) * psi_m * sin_arg
 
-            ax[idx] += alpha_R * cos_phi - alpha_phi * sin_phi
-            ay[idx] += alpha_R * sin_phi + alpha_phi * cos_phi
-        end
+        cos_phi = @. x / R_safe
+        sin_phi = @. y / R_safe
+
+        T_mask = promote_type(eltype(ax), eltype(alpha_R))
+        mask = R .> epsR
+        dax = @. ifelse(mask, alpha_R * cos_phi - alpha_phi * sin_phi, zero(T_mask))
+        day = @. ifelse(mask, alpha_R * sin_phi + alpha_phi * cos_phi, zero(T_mask))
+
+        ax .+= dax
+        ay .+= day
         return ax, ay
     end
 
@@ -251,76 +281,72 @@ module SpiralMultipole
 
         # 2. Analytic multipole Hessian
         m = lens.m
-        A0 = lens.amplitude
-        i_p = lens.pitch_angle
-        R0 = lens.R0
+        T_scalar = promote_type(eltype(x), Float32)
+        i_p = convert(T_scalar, lens.pitch_angle)
+        R0  = convert(T_scalar, lens.R0)
 
         # Precompute d²ψₘ/dR² grid (once, not in the hot loop)
         d2psi_grid = _second_deriv(lens.R_grid, lens.dpsim_dR_grid)
 
-        n = length(x)
-        fxx = zeros(n)
-        fxy = zeros(n)
-        fyy = zeros(n)
+        R = @. sqrt(x^2 + y^2)
+        epsR = eps(eltype(R))
+        oneR = one(eltype(R))
+        R_safe = @. ifelse(R < epsR, oneR, R)
+        mask = R .> epsR
+        phi     = atan.(y, x)
+        cos_phi = @. x / R_safe
+        sin_phi = @. y / R_safe
 
-        for idx in eachindex(x)
-            R = sqrt(x[idx]^2 + y[idx]^2)
-            if R < 1e-20
-                continue
-            end
-            phi = atan(y[idx], x[idx])
-            cos_phi = x[idx] / R
-            sin_phi = y[idx] / R
+        psi_m   = _interp1_vec(R, lens.R_grid, lens.psi_m_grid)
+        dpsi_m  = _interp1_vec(R, lens.R_grid, lens.dpsim_dR_grid)
+        d2psi_m = _interp1_vec(R, lens.R_grid, d2psi_grid)
 
-            psi_m   = _interp1(R, lens.R_grid, lens.psi_m_grid)
-            dpsi_m  = _interp1(R, lens.R_grid, lens.dpsim_dR_grid)
-            d2psi_m = _interp1(R, lens.R_grid, d2psi_grid)
-            f_R     = _spiral_phase(R, m, i_p, R0)
-            fprime  = _spiral_phase_deriv(R, m, i_p)
-            # f''(R) for logarithmic spiral:
-            fdoubleprime = -m / (R^2 * tan(i_p))
+        f_R     = @. m / tan(i_p) * log(R_safe / R0)
+        fprime  = @. m / (R_safe * tan(i_p))
+        fdoubleprime = @. -m / (R_safe^2 * tan(i_p))
 
-            cos_arg = cos(m * phi - f_R)
-            sin_arg = sin(m * phi - f_R)
+        cos_arg = @. cos(m * phi - f_R)
+        sin_arg = @. sin(m * phi - f_R)
 
-            # ∂²ψ/∂R², ∂²ψ/∂R∂φ, ∂²ψ/∂φ² for the m-th mode
-            psi_RR = (d2psi_m * cos_arg
-                      + 2.0 * dpsi_m * sin_arg * fprime
+        # ∂²ψ/∂R², ∂²ψ/∂R∂φ, ∂²ψ/∂φ² for the m-th mode
+        psi_RR = @. (d2psi_m * cos_arg
+                      + 2 * dpsi_m * sin_arg * fprime
                       + psi_m * cos_arg * fprime^2
                       + psi_m * sin_arg * fdoubleprime)
 
-            psi_Rphi = (-m * dpsi_m * sin_arg
+        psi_Rphi = @. (-m * dpsi_m * sin_arg
                         + m * psi_m * cos_arg * fprime)
 
-            psi_phiphi = -m^2 * psi_m * cos_arg
+        psi_phiphi = @. -m^2 * psi_m * cos_arg
 
-            # Convert to Cartesian Hessian
-            f_xx_pert = (psi_RR * cos_phi^2
-                         - 2.0 * psi_Rphi * sin_phi * cos_phi / R
-                         + psi_phiphi * sin_phi^2 / R^2
-                         + (dpsi_m * cos_arg + psi_m * sin_arg * fprime) * sin_phi^2 / R)
+        alpha_R_term = @. dpsi_m * cos_arg + psi_m * sin_arg * fprime
 
-            f_yy_pert = (psi_RR * sin_phi^2
-                         + 2.0 * psi_Rphi * sin_phi * cos_phi / R
-                         + psi_phiphi * cos_phi^2 / R^2
-                         + (dpsi_m * cos_arg + psi_m * sin_arg * fprime) * cos_phi^2 / R)
+        # Convert to Cartesian Hessian
+        f_xx_pert = @. (psi_RR * cos_phi^2
+                         - 2 * psi_Rphi * sin_phi * cos_phi / R_safe
+                         + psi_phiphi * sin_phi^2 / R_safe^2
+                         + alpha_R_term * sin_phi^2 / R_safe)
 
-            f_xy_pert = ((psi_RR - (dpsi_m * cos_arg + psi_m * sin_arg * fprime) / R) * sin_phi * cos_phi
-                         + psi_Rphi * (cos_phi^2 - sin_phi^2) / R
-                         - psi_phiphi * sin_phi * cos_phi / R^2)
+        f_yy_pert = @. (psi_RR * sin_phi^2
+                         + 2 * psi_Rphi * sin_phi * cos_phi / R_safe
+                         + psi_phiphi * cos_phi^2 / R_safe^2
+                         + alpha_R_term * cos_phi^2 / R_safe)
 
-            fxx[idx] = fxx0[idx] + f_xx_pert
-            fxy[idx] = fxy0[idx] + f_xy_pert
-            fyy[idx] = fyy0[idx] + f_yy_pert
-        end
+        f_xy_pert = @. ((psi_RR - alpha_R_term / R_safe) * sin_phi * cos_phi
+                         + psi_Rphi * (cos_phi^2 - sin_phi^2) / R_safe
+                         - psi_phiphi * sin_phi * cos_phi / R_safe^2)
+
+        fxx = @. ifelse(mask, fxx0 + f_xx_pert, fxx0)
+        fxy = @. ifelse(mask, fxy0 + f_xy_pert, fxy0)
+        fyy = @. ifelse(mask, fyy0 + f_yy_pert, fyy0)
 
         return fxx, fxy, fyy
     end
 
     # Helper: second derivative via finite differences on the precomputed grid
-    function _second_deriv(R_grid::Vector{Float64}, dpsi_grid::Vector{Float64})
+    function _second_deriv(R_grid::AbstractVector, dpsi_grid::AbstractVector)
         d2 = similar(dpsi_grid)
-        d2[1] = 0.0
+        d2[1] = zero(eltype(d2))
         for i in 2:(length(R_grid)-1)
             d2[i] = (dpsi_grid[i+1] - dpsi_grid[i-1]) / (R_grid[i+1] - R_grid[i-1])
         end

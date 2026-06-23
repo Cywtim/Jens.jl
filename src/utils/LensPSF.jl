@@ -47,8 +47,18 @@ module LensPSF
     """
     function conv_psf(image::AbstractMatrix, psf::AbstractPSF, pixel_scale::Real; half::Int=0)
         h = half > 0 ? half : _default_half(psf, pixel_scale)
-        kernel = make_kernel(psf, Float64(pixel_scale), h)
-        return imfilter(image, centered(kernel))
+        kernel = make_kernel(psf, pixel_scale, h)
+        T = eltype(image)
+        # ImageFiltering.imfilter does not support GPU kernels natively
+        # (factorkernel triggers scalar indexing). Convolve on CPU and
+        # copy back — kernel is tiny, image convolution is cheap relative
+        # to the lens equation.
+        img_cpu = Array(image)
+        k_cpu = convert(Matrix{T}, kernel)
+        result = imfilter(img_cpu, centered(k_cpu))
+        out = similar(image, T, size(result))
+        copyto!(out, result)
+        return out
     end
 
     # ═══════════════════════════════════════════════════════════════
@@ -60,12 +70,13 @@ module LensPSF
 
     Circular Gaussian PSF parametrised by FWHM [pixels].
     """
-    struct GaussianPSF <: AbstractPSF
-        fwhm::Float64
+    struct GaussianPSF{T<:Real} <: AbstractPSF
+        fwhm::T
     end
-    GaussianPSF(; fwhm::Real=5.0) = GaussianPSF(Float64(fwhm))
+    GaussianPSF(fwhm::Real) = GaussianPSF{typeof(fwhm)}(fwhm)
+    GaussianPSF(; fwhm::Real=5.0) = GaussianPSF(fwhm)
 
-    function make_kernel(psf::GaussianPSF, pixel_scale::Float64, half::Int)
+    function make_kernel(psf::GaussianPSF, pixel_scale::Real, half::Int)
         fwhm_pix = psf.fwhm / pixel_scale
         xs = -half:half
         ys = -half:half
@@ -86,13 +97,14 @@ module LensPSF
 
     Moffat profile PSF. Larger `alpha` → lighter wings.
     """
-    struct MoffatPSF <: AbstractPSF
-        fwhm::Float64
-        alpha::Float64
+    struct MoffatPSF{T<:Real} <: AbstractPSF
+        fwhm::T
+        alpha::T
     end
-    MoffatPSF(; fwhm::Real=5.0, alpha::Real=3.0) = MoffatPSF(Float64(fwhm), Float64(alpha))
+    MoffatPSF(fwhm::Real, alpha::Real) = MoffatPSF{promote_type(typeof(fwhm), typeof(alpha))}(fwhm, alpha)
+    MoffatPSF(; fwhm::Real=5.0, alpha::Real=3.0) = MoffatPSF(fwhm, alpha)
 
-    function make_kernel(psf::MoffatPSF, pixel_scale::Float64, half::Int)
+    function make_kernel(psf::MoffatPSF, pixel_scale::Real, half::Int)
         fwhm_pix = psf.fwhm / pixel_scale
         xs = -half:half
         ys = -half:half
@@ -113,12 +125,13 @@ module LensPSF
 
     Diffraction-limited Airy disk PSF.
     """
-    struct AiryDiskPSF <: AbstractPSF
-        fwhm::Float64
+    struct AiryDiskPSF{T<:Real} <: AbstractPSF
+        fwhm::T
     end
-    AiryDiskPSF(; fwhm::Real=5.0) = AiryDiskPSF(Float64(fwhm))
+    AiryDiskPSF(fwhm::Real) = AiryDiskPSF{typeof(fwhm)}(fwhm)
+    AiryDiskPSF(; fwhm::Real=5.0) = AiryDiskPSF(fwhm)
 
-    function make_kernel(psf::AiryDiskPSF, pixel_scale::Float64, half::Int)
+    function make_kernel(psf::AiryDiskPSF, pixel_scale::Real, half::Int)
         fwhm_pix = psf.fwhm / pixel_scale
         xs = -half:half
         ys = -half:half
@@ -145,12 +158,12 @@ module LensPSF
     """
     struct KernelPSF{T<:Real} <: AbstractPSF
         kernel::Matrix{T}
-        pixel_scale::Float64   # [arcsec/pixel] — intrinsic scale of the kernel
+        pixel_scale::T   # [arcsec/pixel] — intrinsic scale of the kernel
     end
 
-    function make_kernel(psf::KernelPSF, pixel_scale::Float64, half::Int)
-        k = psf.kernel
-        k ./= sum(k)  # normalise in-place copy
+    function make_kernel(psf::KernelPSF, pixel_scale::Real, half::Int)
+        k = copy(psf.kernel)
+        k ./= sum(k)  # normalise copy
 
         if abs(pixel_scale - psf.pixel_scale) < 1e-6
             # Same scale — centre-crop or zero-pad to (2h+1)×(2h+1)
@@ -171,7 +184,7 @@ module LensPSF
         sz = size(kernel, 1)
         cur_half = sz ÷ 2
         out_sz = 2 * target_half + 1
-        out = zeros(Float64, out_sz, out_sz)
+        out = zeros(eltype(kernel), out_sz, out_sz)
 
         copy_half = min(cur_half, target_half)
         c0 = sz ÷ 2 + 1
@@ -184,15 +197,16 @@ module LensPSF
     end
 
     "Resample a kernel by a given scale factor (bilinear interpolation)."
-    function _resample_kernel(kernel::AbstractMatrix, scale_factor::Float64, target_half::Int)
+    function _resample_kernel(kernel::AbstractMatrix, scale_factor::Real, target_half::Int)
         sz_in = size(kernel, 1)
         out_sz = 2 * target_half + 1
+        T = eltype(kernel)
 
         # Build coordinate grids for output → input mapping
         c_out = out_sz ÷ 2 + 1
         c_in  = sz_in ÷ 2 + 1
 
-        out = zeros(Float64, out_sz, out_sz)
+        out = zeros(T, out_sz, out_sz)
         for j_out in 1:out_sz, i_out in 1:out_sz
             # Map output pixel centre → input fractional coordinate
             x_in = c_in + (i_out - c_out) / scale_factor
@@ -205,7 +219,7 @@ module LensPSF
             iy1 = iy0 + 1
 
             if ix0 < 1 || ix1 > sz_in || iy0 < 1 || iy1 > sz_in
-                out[i_out, j_out] = 0.0
+                out[i_out, j_out] = zero(T)
                 continue
             end
 
@@ -368,9 +382,9 @@ module LensPSF
     """
     function evaluate_psf_at(psf::AbstractPSF, dx::Real, dy::Real;
                               pixel_scale::Real=0.04, half::Int=7)
-        kernel = make_kernel(psf, Float64(pixel_scale), half)
+        kernel = make_kernel(psf, pixel_scale, half)
         sz = 2*half + 1
-        out = zeros(Float64, sz, sz)
+        out = zeros(eltype(kernel), sz, sz)
         for j in 1:sz, i in 1:sz
             px = (i - half - 1) - dx
             py = (j - half - 1) - dy
@@ -382,12 +396,13 @@ module LensPSF
 
     "Bilinear interpolation within the kernel at fractional pixel offset."
     function _interpolate_kernel(kernel, px, py, half)
+        sz = size(kernel, 1)
+        T = eltype(kernel)
         ix0 = floor(Int, px + half + 1)
         iy0 = floor(Int, py + half + 1)
         ix1, iy1 = ix0 + 1, iy0 + 1
-        sz = size(kernel, 1)
         if ix0 < 1 || ix1 > sz || iy0 < 1 || iy1 > sz
-            return 0.0
+            return zero(T)
         end
         wx = px + half + 1 - ix0
         wy = py + half + 1 - iy0
@@ -425,8 +440,9 @@ module LensPSF
         # x_src, y_src are 1-indexed pixel coordinates (fractional allowed)
         ipx = floor(Int, x_src)         # integer pixel containing source
         ipy = floor(Int, y_src)
-        fpx = Float64(x_src) - ipx      # fractional offset ∈ [0, 1)
-        fpy = Float64(y_src) - ipy
+        T = eltype(image)
+        fpx = T(x_src) - ipx      # fractional offset ∈ [0, 1)
+        fpy = T(y_src) - ipy
 
         # Window origin in 1-indexed image pixel coordinates
         ci0 = ipx - half
@@ -435,7 +451,7 @@ module LensPSF
 
         if method == :supersample
             # Build fine kernel at pixel_scale/n_sub
-            fine_scale = Float64(pixel_scale) / n_sub
+            fine_scale = T(pixel_scale) / n_sub
             half_fine = (half + 1) * n_sub       # PADDED for sub-pixel offsets
             fk = make_kernel(psf, fine_scale, half_fine)
             ksz = size(fk, 1)

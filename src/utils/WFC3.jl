@@ -17,7 +17,7 @@ module WFC3
 
     using FFTW
 
-    import Jens.LensPSF: AbstractPSF, make_kernel
+    import Jens.LensPSF: AbstractPSF, make_kernel, _default_half
 
     export wfc3_psf, WFC3_UVIS_PSF, WFC3_PSF_UVIS_F606W
 
@@ -117,6 +117,14 @@ module WFC3
             psf.lambda_eff, npix, pixel_scale, psf.oversample
         )
         return kernel
+    end
+
+    # default_half: 6σ coverage (~3× FWHM) to capture diffraction wings + spiders
+    #    FWHM ≈ λ/D for HST, converted to arcsec via 206265 rad⁻¹
+    _default_half(psf::WFC3_UVIS_PSF, pixel_scale) = begin
+        fwhm_rad  = psf.lambda_eff / D_HST         # diffraction limit [rad]
+        fwhm_arc  = fwhm_rad * 206265.0             # [arcsec]
+        ceil(Int, 3.0 * fwhm_arc / pixel_scale)     # 6σ ≈ 3×FWHM → pixels
     end
 
     # ═══════════════════════════════════════════════════════════════

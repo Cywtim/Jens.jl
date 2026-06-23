@@ -28,10 +28,11 @@ module MGE
 
     function _circgauss_deflection(x, y, kappa0::Real, sigma::Real)
         R2 = @. x^2 + y^2
-        invR2 = @. ifelse(R2 < 1e-20, 0.0, 1.0 / R2)
-        fac = @. kappa0 * 2.0 * sigma^2
-        expfac = @. exp(-R2 / (2.0 * sigma^2))
-        alpha = @. ifelse(R2 < 1e-20, kappa0, fac * (1.0 - expfac) * invR2)
+        T = eltype(R2)
+        invR2 = @. ifelse(R2 < 1e-20, zero(T), one(T) / R2)
+        fac = @. kappa0 * 2 * sigma^2
+        expfac = @. exp(-R2 / (2 * sigma^2))
+        alpha = @. ifelse(R2 < 1e-20, convert(T, kappa0), fac * (one(T) - expfac) * invR2)
         ax = @. alpha * x
         ay = @. alpha * y
         return ax, ay
@@ -39,24 +40,26 @@ module MGE
 
     function _circgauss_hessian(x, y, kappa0::Real, sigma::Real)
         R2 = @. x^2 + y^2
-        safe_R2 = @. ifelse(R2 < 1e-20, 1.0, R2)
+        T = eltype(R2)
+        safe_R2 = @. ifelse(R2 < 1e-20, one(T), R2)
 
-        invR2 = @. 1.0 / safe_R2
+        invR2 = @. one(T) / safe_R2
         invR4 = @. invR2 * invR2
 
         sigma2 = sigma^2
-        expfac = @. exp(-safe_R2 / (2.0 * sigma2))
+        expfac = @. exp(-safe_R2 / (2 * sigma2))
 
         kappa = @. kappa0 * expfac
-        kappa_bar = @. kappa0 * 2.0 * sigma2 * invR2 * (1.0 - expfac)
+        kappa_bar = @. kappa0 * 2 * sigma2 * invR2 * (one(T) - expfac)
         gamma_iso = @. kappa_bar - kappa
 
         cos2phi = @. (x^2 - y^2) * invR2
-        sin2phi = @. 2.0 * x * y * invR2
+        sin2phi = @. 2 * x * y * invR2
 
-        f_xx = @. ifelse(R2 < 1e-20, kappa0 / 2.0, kappa + gamma_iso * cos2phi)
-        f_yy = @. ifelse(R2 < 1e-20, kappa0 / 2.0, kappa - gamma_iso * cos2phi)
-        f_xy = @. ifelse(R2 < 1e-20, 0.0,           gamma_iso * sin2phi)
+        half_k0 = convert(T, kappa0 / 2)
+        f_xx = @. ifelse(R2 < 1e-20, half_k0, kappa + gamma_iso * cos2phi)
+        f_yy = @. ifelse(R2 < 1e-20, half_k0, kappa - gamma_iso * cos2phi)
+        f_xy = @. ifelse(R2 < 1e-20, zero(T),           gamma_iso * sin2phi)
 
         return f_xx, f_xy, f_yy
     end
@@ -114,25 +117,25 @@ module MGE
     #  Implements AbstractLens interface for use with LensPlane etc.
     # ═══════════════════════════════════════════════════════════════
 
-    struct MGECombinedLens <: AbstractLens
-        sigmas::Vector{Float64}
-        kappa0s::Vector{Float64}
+    struct MGECombinedLens{S<:AbstractVector{<:Real}, K<:AbstractVector{<:Real}} <: AbstractLens
+        sigmas::S
+        kappa0s::K
 
-        function MGECombinedLens(sigmas::Vector{Float64}, kappa0s::Vector{Float64})
+        function MGECombinedLens(sigmas::S, kappa0s::K) where {S<:AbstractVector{<:Real}, K<:AbstractVector{<:Real}}
             @assert length(sigmas) == length(kappa0s) "sigmas and kappa0s must have same length"
             @assert all(sigmas .> 0) "sigmas must be positive"
             @assert all(kappa0s .>= 0) "kappa0s must be non-negative"
-            new(sigmas, kappa0s)
+            new{S,K}(sigmas, kappa0s)
         end
     end
 
     function circular_gaussian_lens(x, y, lens::MGECombinedLens; what::Symbol=:deflection)
-        T = promote_type(eltype(x), eltype(lens.kappa0s), eltype(lens.sigmas))
+        T = eltype(x)
         ax = similar(x, T); ax .= zero(T)
         ay = similar(y, T); ay .= zero(T)
         if what == :deflection || what == :all
             for (sigma, kappa0) in zip(lens.sigmas, lens.kappa0s)
-                dax, day = _circgauss_deflection(x, y, kappa0, sigma)
+                dax, day = _circgauss_deflection(x, y, convert(T, kappa0), convert(T, sigma))
                 ax .+= dax
                 ay .+= day
             end
@@ -140,12 +143,12 @@ module MGE
         end
 
         if what == :hessian || what == :all
-            T = promote_type(eltype(x), eltype(lens.kappa0s), eltype(lens.sigmas))
+            T = eltype(x)
             fxx = similar(x, T); fxx .= zero(T)
             fxy = similar(x, T); fxy .= zero(T)
             fyy = similar(x, T); fyy .= zero(T)
             for (sigma, kappa0) in zip(lens.sigmas, lens.kappa0s)
-                hxx, hxy, hyy = _circgauss_hessian(x, y, kappa0, sigma)
+                hxx, hxy, hyy = _circgauss_hessian(x, y, convert(T, kappa0), convert(T, sigma))
                 fxx .+= hxx
                 fxy .+= hxy
                 fyy .+= hyy

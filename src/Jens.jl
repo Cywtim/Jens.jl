@@ -28,6 +28,11 @@ module Jens
     include("utils/MGE.jl")
 
     # ═══════════════════════════════════════════════════════════════
+    #  System
+    # ═══════════════════════════════════════════════════════════════
+    include("core/LensSystem.jl")
+
+    # ═══════════════════════════════════════════════════════════════
     #  Models
     # ═══════════════════════════════════════════════════════════════
     include("models/lens/LensModel.jl")
@@ -43,6 +48,7 @@ module Jens
     export LensUtils, LensBase
     export LensFITS
     export LensGenerator, LensCosmo, LensLOS, LensSolver, LensNoise, LensPSF, WFC3
+    export LensSystem
     export LensModel, LightModel
     export LensPlots
 

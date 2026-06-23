@@ -163,7 +163,7 @@ module LensGenerator
     # ==============================================================
     struct MultiLensedPlane{P<:Tuple, C<:Cosmology.AbstractCosmology} <: AbstractLens
         planes::P          # each element: (lens, z, kwargs::NamedTuple)
-        z_source::Float64
+        z_source::Float32
         cosmology::C
     end
 
@@ -350,6 +350,7 @@ module LensGenerator
     end
 
     # ── Single outer constructor — handles both explicit and auto-grid ─
+    # old version
     function LensInstance(;
             # Core fields
             redshift::Float64  = 0.5,
@@ -456,7 +457,7 @@ module LensGenerator
         x_min = xg[1, 1]
         y_min = yg[1, 1]
 
-        img = zeros(Float64, ny, nx)
+        img = zeros(eltype(xg), ny, nx)
         for (tx, ty, mu) in images
             F = pt.flux * abs(mu)
             px = (tx - x_min) / pixel_scale + 1.0
@@ -514,7 +515,7 @@ module LensGenerator
 
         xg = grid.xg
         ny, nx = size(xg)
-        result = zeros(Float64, ny, nx)
+        result = zeros(eltype(xg), ny, nx)
 
         for component in src.sources
             result .+= render_lens(component, grid, lens_model; kwargs...)
