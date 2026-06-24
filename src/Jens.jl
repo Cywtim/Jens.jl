@@ -43,6 +43,12 @@ module Jens
     include("plotting/LensPlots.jl")
 
     # ═══════════════════════════════════════════════════════════════
+    #  Sampling
+    # ═══════════════════════════════════════════════════════════════
+    include("sampling/LensMH.jl")      # standalone adaptive MH (no deps)
+    include("sampling/LensTuring.jl")  # Turing @model wrappers
+
+    # ═══════════════════════════════════════════════════════════════
     #  Exports
     # ═══════════════════════════════════════════════════════════════
     export LensUtils, LensBase
@@ -51,5 +57,22 @@ module Jens
     export LensSystem
     export LensModel, LightModel
     export LensPlots
+    export LensTuring, LensMH
+
+    # ═══════════════════════════════════════════════════════════════
+    #  GPU convenience (filled by ext/JensCUDA.jl when CUDA loaded)
+    # ═══════════════════════════════════════════════════════════════
+    """
+        gpu_grid(; pix_n=256, pix_size=Float32(0.09)) -> GridGPU
+
+    Create a GPU grid.  Requires `using CUDA` beforehand.
+    When CUDA is not loaded, calling this gives a MethodError.
+
+    # Example
+        using Jens, CUDA
+        grid = gpu_grid(pix_n=256, pix_size=Float32(0.04))
+    """
+    function gpu_grid end
+    export gpu_grid
 
 end

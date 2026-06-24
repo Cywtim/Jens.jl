@@ -37,7 +37,7 @@ struct ExtendedSource{F<:Function, P<:NamedTuple} <: AbstractLight
 end
 
 function ExtendedSource(profile::Function; kwargs...)
-    nt = (; (Symbol(k) => Float64(v) for (k, v) in kwargs)...)
+    nt = (; (Symbol(k) => float(v) for (k, v) in kwargs)...)
     return ExtendedSource{typeof(profile), typeof(nt)}(profile, nt)
 end
 
@@ -58,7 +58,7 @@ struct PointImage <: AbstractLight
 end
 
 function PointImage(; flux::Real=1.0, beta_x::Real=0.0, beta_y::Real=0.0)
-    return PointImage(Float64(flux), Float64(beta_x), Float64(beta_y))
+    return PointImage(float(flux), float(beta_x), float(beta_y))
 end
 
 

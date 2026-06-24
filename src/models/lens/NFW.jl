@@ -19,38 +19,51 @@ module NFW
     end
 
     function alpha2rho0(alpha_Rs::Real, Rs::Real)
-
-        rho0 = @. alpha_Rs / (4.0 * Rs^2 * (1.0 + log(1.0 / 2.0)))
+        T = promote_type(typeof(alpha_Rs), typeof(Rs))
+        rho0 = alpha_Rs / (T(4) * Rs^2 * (one(T) + log(one(T) / T(2))))
         return rho0
-
     end
 
+    # GPU-compatible: ifelse + generic types (no Float64 literals).
+    #  ifelse evaluates ALL branches, so we clamp sqrt/acosh/acos args
+    #  to safe domains within each unused branch.
     function h(r_rs)
-        e = 1e-6
-        if r_rs < 1
-            rrs = max(e, r_rs)
-            a = @. log(rrs / 2.0) + 1 / sqrt(1 - rrs^2) * acosh(1.0 / rrs)
-        elseif r_rs == 1
-            a = @. 1 + log(1.0 / 2.0)
-        else  # r_rs > 1:
-            a = @. log(r_rs / 2) + 1 / sqrt(r_rs^2 - 1) * acos(1.0 / r_rs)
-        end
-        
-        return a
+        T = typeof(r_rs)
+        eps_t = T(1e-6)
+        r = max(eps_t, r_rs)
+        zero_t = zero(T)
+        one_t  = one(T)
+        two_t  = T(2)
+
+        lt1 = r < one_t
+        eq1 = r == one_t
+
+        # a1 branch (r<1): clamp sqrt arg ≥0, acosh arg ≥1
+        sq1 = max(one_t - r^2, zero_t)
+        ac1 = max(one_t / r, one_t)
+        a1 = log(r / two_t) + one_t / sqrt(sq1) * acosh(ac1)
+
+        a2 = one_t + log(one_t / two_t)
+
+        # a3 branch (r>1): clamp sqrt arg ≥0, acos arg ≤1
+        sq3 = max(r^2 - one_t, zero_t)
+        ac3 = min(one_t / r, one_t)
+        a3 = log(r / two_t) + one_t / sqrt(sq3) * acos(ac3)
+
+        return ifelse(lt1, a1, ifelse(eq1, a2, a3))
     end
 
     function potential(R, Rs, rho0)
+        T = eltype(R)
         r_rs = @. R / Rs
         hx = h.(r_rs)
-        p = @. 2 * rho0 * Rs^2 * hx
+        p = @. T(2) * rho0 * Rs^2 * hx
         return p
     end
 
     function LensPotential(x, y; Rs, alpha_Rs, xcentre=0., ycentre=0.)
-
         rho0 = alpha2rho0(alpha_Rs, Rs)
         Rs = max(Rs, 1e-6)
-
         xsh = @. x - xcentre
         ysh = @. y - ycentre
         R = @. sqrt(xsh^2 + ysh^2)
@@ -59,25 +72,39 @@ module NFW
     end
 
     function alpha(R, Rs, rho0)
-        R = max.(R, 1e-6)
+        T = eltype(R)
+        R = max.(R, T(1e-6))
         r_rs = @. R / Rs
         gx = g.(r_rs)
-        a = @. 4 * rho0 * Rs * gx / r_rs^2
+        a = @. T(4) * rho0 * Rs * gx / r_rs^2
         return a 
-
     end
 
+    # GPU-compatible: same pattern as h() — ifelse + domain clamping
     function g(r_rs)
-        c = 1e-6
-        if r_rs < 1
-            r_rs = max(c, r_rs)
-            a = @. log(r_rs / 2.0) + 1 / sqrt(1 - r_rs^2) * acosh(1.0 / r_rs)
-        elseif r_rs == 1
-            a = @. 1 + log(1.0 / 2.0)
-        else  # r_rs > 1:
-            a = @. log(r_rs / 2) + 1 / sqrt(r_rs^2 - 1) * acos(1.0 / r_rs)
-        end
-        return a
+        T = typeof(r_rs)
+        eps_t = T(1e-6)
+        r = max(eps_t, r_rs)
+        zero_t = zero(T)
+        one_t  = one(T)
+        two_t  = T(2)
+
+        lt1 = r < one_t
+        eq1 = r == one_t
+
+        # a1 (r<1): clamp sqrt arg ≥0, acosh arg ≥1
+        sq1 = max(one_t - r^2, zero_t)
+        ac1 = max(one_t / r, one_t)
+        a1 = log(r / two_t) + one_t / sqrt(sq1) * acosh(ac1)
+
+        a2 = one_t + log(one_t / two_t)
+
+        # a3 (r>1): clamp sqrt arg ≥0, acos arg ≤1
+        sq3 = max(r^2 - one_t, zero_t)
+        ac3 = min(one_t / r, one_t)
+        a3 = log(r / two_t) + one_t / sqrt(sq3) * acos(ac3)
+
+        return ifelse(lt1, a1, ifelse(eq1, a2, a3))
     end
 
     function LensDerivative(x, y; Rs, alpha_Rs, xcentre=0., ycentre=0.)
@@ -101,41 +128,56 @@ module NFW
         xsh = @. x - xcentre
         ysh = @. y - ycentre
         R = @. sqrt(xsh^2+ysh^2)
+        T = eltype(R)
         r_rs = @. R / Rs
         Fx = f.(r_rs)
-        kappa = @. 2 * rho0 * Rs * Fx
+        kappa = @. T(2) * rho0 * Rs * Fx
         return kappa
     end
 
     function gamma(x, y, R, Rs, rho0)
-
-        c = 1e-8
+        T = eltype(R)
+        c = T(1e-8)
         R = max.(R, c)
         r_rs = @. R / Rs
         gx = g.(r_rs)
         Fx = f.(r_rs)
-        a = @. 2 * rho0 * Rs * (2 * gx / r_rs^2 - Fx)
+        a = @. T(2) * rho0 * Rs * (T(2) * gx / r_rs^2 - Fx)
         shear1 = @. a * (y^2 - x^2) / R^2
-        shear2 = @. -a * 2 * (x * y) / R^2
-
+        shear2 = @. -a * T(2) * (x * y) / R^2
         return shear1, shear2
     end
 
+    # GPU-compatible: ifelse + generic types + domain clamping.
+    #  r=0 is a removable singularity; handled via ε bump.
     function f(r_rs)
+        T = typeof(r_rs)
+        zero_t  = zero(T)
+        one_t   = one(T)
+        two_t   = T(2)
+        three_t = T(3)
+        eps_t   = T(1e-8)
 
-        if (r_rs < 1) && (r_rs > 0)
-            a = 1 / (r_rs^2 - 1) * (1 - 2 / sqrt(1 - r_rs^2) * atanh(sqrt((1 - r_rs) / (1 + r_rs))))
-    
-        elseif r_rs == 1
-            a = 1.0 / 3
-        elseif r_rs > 1
-            a = 1 / (r_rs^2 - 1) * ( 1 - 2 / sqrt(r_rs^2 - 1) * atan(sqrt((r_rs - 1) / (1 + r_rs))))
+        # Bump r=0 to eps_t to keep all branches well-defined
+        r = ifelse(r_rs == zero_t, eps_t, r_rs)
 
-        else  # r_rs == 0:
-            c = 1e-8
-            a = 1 / (-1) * (1 - 2 / sqrt(1) * atanh(sqrt((1 - c) / (1 + c))))
-        end
-        return a
+        lt1 = (r > zero_t) & (r < one_t)
+        eq1 = r == one_t
+
+        # a_lt1: r<1 → clamp sqrt arg ≥0, atanh arg <1
+        sq_lt = max(one_t - r^2, zero_t)
+        at_arg_lt = min(sqrt(max((one_t - r) / (one_t + r), zero_t)), one_t - eps_t)
+        a_lt1 = one_t / (r^2 - one_t) *
+                (one_t - two_t / sqrt(sq_lt) * atanh(at_arg_lt))
+
+        a_eq1 = one_t / three_t
+
+        # a_gt1: r>1 → clamp sqrt arg ≥0, atan arg fine
+        sq_gt = max(r^2 - one_t, zero_t)
+        a_gt1 = one_t / (r^2 - one_t) *
+                (one_t - two_t / sqrt(sq_gt) * atan(sqrt((r - one_t) / (one_t + r))))
+
+        return ifelse(eq1, a_eq1, ifelse(lt1, a_lt1, a_gt1))
     end
                                                               
 

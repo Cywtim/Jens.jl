@@ -139,4 +139,10 @@ function conv_psf(image::CuArray{T,2}, psf::AbstractPSF,
     return _fft_conv_same(image, kernel)
 end
 
+# ═══════════════════════════════════════════════════════════════
+#  Inject into parent namespace: fills Jens.gpu_grid placeholder
+# ═══════════════════════════════════════════════════════════════
+Jens.gpu_grid(; pix_n=256, pix_size::Real=Float32(0.09)) =
+    GenGrid_GPU(; pix_n, pix_size=Float32(pix_size))
+
 end # module JensCUDA

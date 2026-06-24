@@ -174,10 +174,18 @@ module LensSystem
 
         xg = sys.grid.xg
         T = eltype(xg)
-        result = zeros(T, size(xg))
 
-        x_min = xg[1, 1]
-        y_min = sys.grid.yg[1, 1]
+        # Allocate result matching grid type (GPU or CPU)
+        result = fill!(similar(xg), zero(T))
+
+        # render_point! does scalar indexing → render on CPU buffer
+        nx, ny = size(xg)
+        buf = zeros(T, nx, ny)  # always CPU
+
+        # Compute grid origin from metadata (avoids GPU scalar indexing)
+        half = div(sys.grid.pix_n, 2) * Float64(sys.grid.pix_size)
+        x_min = -half
+        y_min = -half
         pixel_scale = sys.grid.pix_size
 
         for (tx, ty, mu) in images
@@ -185,17 +193,18 @@ module LensSystem
             px = (tx - x_min) / pixel_scale + 1
             py = (ty - y_min) / pixel_scale + 1
             if sys.psf !== nothing
-                render_point!(result, sys.psf, px, py, F;
+                render_point!(buf, sys.psf, px, py, F;
                               pixel_scale=pixel_scale, half=7)
             else
                 ix = round(Int, px)
                 iy = round(Int, py)
-                if 1 <= ix <= size(result, 2) && 1 <= iy <= size(result, 1)
-                    result[iy, ix] += F
+                if 1 <= ix <= size(buf, 2) && 1 <= iy <= size(buf, 1)
+                    buf[iy, ix] += F
                 end
             end
         end
-        return result  # PSF applied via render_point! per image
+        copyto!(result, buf)  # CPU→CPU no-op, CPU→GPU transfer
+        return result
     end
 
     # ── CompositeImage: recursive sum of components ──

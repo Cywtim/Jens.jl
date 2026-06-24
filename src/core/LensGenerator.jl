@@ -50,20 +50,29 @@ module LensGenerator
         return LensedPlane(lens, z_lens, cosmology)
     end
 
-    function lens_derivative(lp::LensedPlane, x, y; z_source, kwargs...)
-        ratio = lens_distance_ratio(lp.cosmology, lp.z_lens, Float64(z_source))
+    function lens_derivative(lp::LensedPlane, x, y; z_source=nothing, kwargs...)
+        z_source !== nothing || error(
+            "LensedPlane.lens_derivative requires z_source=<redshift>. " *
+            "Pass it explicitly or use ForwardModel which provides it automatically.")
+        ratio = lens_distance_ratio(lp.cosmology, lp.z_lens, float(z_source))
         aphys_x, aphys_y = lens_derivative(lp.lens, x, y; kwargs...)
         return aphys_x .* ratio, aphys_y .* ratio
     end
 
-    function lens_hessian(lp::LensedPlane, x, y; z_source, kwargs...)
-        ratio = lens_distance_ratio(lp.cosmology, lp.z_lens, Float64(z_source))
+    function lens_hessian(lp::LensedPlane, x, y; z_source=nothing, kwargs...)
+        z_source !== nothing || error(
+            "LensedPlane.lens_hessian requires z_source=<redshift>. " *
+            "Pass it explicitly or use ForwardModel which provides it automatically.")
+        ratio = lens_distance_ratio(lp.cosmology, lp.z_lens, float(z_source))
         fxx, fxy, fyy = lens_hessian(lp.lens, x, y; kwargs...)
         return fxx .* ratio, fxy .* ratio, fyy .* ratio
     end
 
-    function lens_potential(lp::LensedPlane, x, y; z_source, kwargs...)
-        ratio = lens_distance_ratio(lp.cosmology, lp.z_lens, Float64(z_source))
+    function lens_potential(lp::LensedPlane, x, y; z_source=nothing, kwargs...)
+        z_source !== nothing || error(
+            "LensedPlane.lens_potential requires z_source=<redshift>. " *
+            "Pass it explicitly or use ForwardModel which provides it automatically.")
+        ratio = lens_distance_ratio(lp.cosmology, lp.z_lens, float(z_source))
         psi = lens_potential(lp.lens, x, y; kwargs...)
         return psi .* ratio
     end
@@ -92,7 +101,7 @@ module LensGenerator
     end
 
     function LightPlane(light::AbstractLight; z::Real)
-        return LightPlane(light, Float64(z))
+        return LightPlane(light, float(z))
     end
 
     # ==============================================================

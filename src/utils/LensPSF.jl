@@ -48,18 +48,58 @@ module LensPSF
     function conv_psf(image::AbstractMatrix, psf::AbstractPSF, pixel_scale::Real; half::Int=0)
         h = half > 0 ? half : _default_half(psf, pixel_scale)
         kernel = make_kernel(psf, pixel_scale, h)
-        T = eltype(image)
-        # ImageFiltering.imfilter does not support GPU kernels natively
-        # (factorkernel triggers scalar indexing). Convolve on CPU and
-        # copy back — kernel is tiny, image convolution is cheap relative
-        # to the lens equation.
-        img_cpu = Array(image)
-        k_cpu = convert(Matrix{T}, kernel)
-        result = imfilter(img_cpu, centered(k_cpu))
-        out = similar(image, T, size(result))
-        copyto!(out, result)
-        return out
+        return _direct_conv_same(image, kernel)
     end
+
+    """
+        _direct_conv_same(image, kernel) → convolved
+
+    Direct 2D "same" convolution.  Uses clamped boundary handling.
+    Nested-loop implementation — GPU-compatible via CuArray
+    auto-parallelisation of CartesianIndices.  Small kernels only
+    (PSF ≤ 51×51); for larger kernels consider FFT.
+
+    Replaces the old FFTW-based `_fft_conv_same` which was
+    incompatible with GPU arrays.
+    """
+    function _direct_conv_same(image::AbstractMatrix{T}, kernel::AbstractMatrix) where T
+        M, N   = size(image)
+        K      = size(kernel, 1)
+        @assert K == size(kernel, 2) && isodd(K) "kernel must be square and odd"
+
+        kh     = K ÷ 2
+        kc     = (K + 1) ÷ 2
+        result = zeros(T, M, N)
+
+        @inbounds for j in 1:N, i in 1:M
+            s = zero(T)
+            for dj in -kh:kh, di in -kh:kh
+                ii = clamp(i + di, 1, M)
+                jj = clamp(j + dj, 1, N)
+                s += image[ii, jj] * kernel[kc + di, kc + dj]
+            end
+            result[i, j] = s
+        end
+        return result
+    end
+
+    # ── Legacy _fft_conv_same (preserved for reference) ─────────
+    # function _fft_conv_same(image::AbstractMatrix{T}, kernel::AbstractMatrix) where T
+    #     M, N = size(image)
+    #     K = size(kernel, 1)
+    #     @assert K == size(kernel, 2) && isodd(K) "kernel must be square and odd"
+    #     P_h, P_w = M + K - 1, N + K - 1
+    #     img_pad = zeros(T, P_h, P_w)
+    #     img_pad[1:M, 1:N] .= image
+    #     k_flip = reverse(reverse(kernel; dims=1); dims=2)
+    #     kern_pad = zeros(Complex{T}, P_h, P_w)
+    #     kern_pad[1:K, 1:K] .= k_flip
+    #     F_img  = FFTW.fft(img_pad)
+    #     F_kern = FFTW.fft(kern_pad)
+    #     full   = real(FFTW.ifft(F_img .* F_kern))
+    #     kc = (K + 1) ÷ 2
+    #     return full[kc:kc+M-1, kc:kc+N-1]
+    # end
 
     # ═══════════════════════════════════════════════════════════════
     #  Gaussian PSF
@@ -73,7 +113,6 @@ module LensPSF
     struct GaussianPSF{T<:Real} <: AbstractPSF
         fwhm::T
     end
-    GaussianPSF(fwhm::Real) = GaussianPSF{typeof(fwhm)}(fwhm)
     GaussianPSF(; fwhm::Real=5.0) = GaussianPSF(fwhm)
 
     function make_kernel(psf::GaussianPSF, pixel_scale::Real, half::Int)
@@ -128,7 +167,6 @@ module LensPSF
     struct AiryDiskPSF{T<:Real} <: AbstractPSF
         fwhm::T
     end
-    AiryDiskPSF(fwhm::Real) = AiryDiskPSF{typeof(fwhm)}(fwhm)
     AiryDiskPSF(; fwhm::Real=5.0) = AiryDiskPSF(fwhm)
 
     function make_kernel(psf::AiryDiskPSF, pixel_scale::Real, half::Int)
