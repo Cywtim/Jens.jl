@@ -9,6 +9,6 @@ module LightModel
     include("SersicLight.jl")
     include("PointSource.jl")        # backward compat: PointSource alias
 
-    export PointSource
+    export PointSource, PointImages
 
 end

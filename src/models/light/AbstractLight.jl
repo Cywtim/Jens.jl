@@ -63,6 +63,45 @@ end
 
 
 # ═══════════════════════════════════════════════════════════════
+#  PointImages — pre-solved point sources at known image-plane positions
+#
+#      # Plan A: observed flux (amp already includes magnification)
+#      agn = PointImages(
+#          (50.0, [(0.206, -0.232), (-0.415, 0.311)]),
+#          (10.0, [(0.1, 0.05)]),
+#      )
+#
+#      # Plan B: intrinsic flux — μ computed automatically from lens model
+#      agn = PointImages(
+#          (5.0,  [(0.206, -0.232), (-0.415, 0.311)]);
+#          intrinsic=true,
+#      )
+#
+#  Each component = (amp, positions) where:
+#    - amp       : total flux per component
+#                  intrinsic=false → observed flux (includes magnification)
+#                  intrinsic=true  → intrinsic flux (μ applied at render time)
+#    - positions : Vector of (x, y) arcsec image-plane positions
+#
+#  No lens equation solving — positions are known observables.
+# ═══════════════════════════════════════════════════════════════
+
+struct PointImages{T<:Real} <: AbstractLight
+    components::Vector{Tuple{T, Vector{Tuple{Float64, Float64}}}}
+    intrinsic::Bool
+end
+
+function PointImages(components::Tuple...; intrinsic::Bool=false)
+    T = typeof(components[1][1])   # infer type from first amp
+    groups = Vector{Tuple{T, Vector{Tuple{Float64, Float64}}}}()
+    for (amp, positions) in components
+        push!(groups, (amp, [(Float64(x), Float64(y)) for (x, y) in positions]))
+    end
+    return PointImages{T}(groups, intrinsic)
+end
+
+
+# ═══════════════════════════════════════════════════════════════
 #  CompositeImage — ordered tuple of AbstractLight sources
 #
 #      src = CompositeImage(host, agn, ring)

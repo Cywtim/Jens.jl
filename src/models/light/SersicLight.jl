@@ -16,14 +16,17 @@ module SersicLight
         where $b_n \approx 1.999n-0.327$
         =#
 
-        b = max(1.999 * n - 0.327, bmin)
+        T = promote_type(eltype(x), eltype(y))
+        two  = T(1.999)
+        off  = T(0.327)
+        bmin_T = T(bmin)
+        b = max(two * n - off, bmin_T)
 
         R = @. sqrt((x - xcentre)^2 + (y - ycentre)^2)
 
         I = @. amp * exp( - b * ( R / Rsersic )^(1/n))
 
         return I
-
     end
 
     function SersicElliptical(x::AbstractArray, y::AbstractArray;

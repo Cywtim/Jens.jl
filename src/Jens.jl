@@ -46,6 +46,8 @@ module Jens
     #  Sampling
     # ═══════════════════════════════════════════════════════════════
     include("sampling/LensMH.jl")      # standalone adaptive MH (no deps)
+    include("sampling/LensHMC.jl")     # HMC/NUTS via AdvancedHMC + FiniteDiff
+    include("sampling/LensSample.jl")  # two-stage: HMC explore → MH refine
     include("sampling/LensTuring.jl")  # Turing @model wrappers
 
     # ═══════════════════════════════════════════════════════════════
@@ -57,7 +59,7 @@ module Jens
     export LensSystem
     export LensModel, LightModel
     export LensPlots
-    export LensTuring, LensMH
+    export LensTuring, LensMH, LensHMC, LensSample
 
     # ═══════════════════════════════════════════════════════════════
     #  GPU convenience (filled by ext/JensCUDA.jl when CUDA loaded)

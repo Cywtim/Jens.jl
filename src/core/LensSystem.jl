@@ -18,7 +18,7 @@ module LensSystem
     import Jens.LensBase: AbstractLens, lens_derivative, lens_hessian,
                            lens_potential, lens_check
     using Jens.LensPSF: AbstractPSF, conv_psf, render_point!
-    using Jens.LightModel: AbstractLight, ExtendedSource, PointImage,
+    using Jens.LightModel: AbstractLight, ExtendedSource, PointImage, PointImages,
                            CompositeImage, evaluate_source
     using Jens.LensGenerator: LensedPlane, MultiLensedPlane,
                               LightPlane, MultiLightPlane
@@ -206,6 +206,62 @@ module LensSystem
         copyto!(result, buf)  # CPU→CPU no-op, CPU→GPU transfer
         return result
     end
+
+    # ── PointImages: pre-solved positions, no lens equation ──
+        #
+        #  intrinsic=false: amp is observed flux (magnification already included)
+        #  intrinsic=true:  amp is intrinsic flux → μ computed from lens_hessian
+
+        function _render_light(sys::ForwardModel, pi::PointImages{<:Real}, z_src; solver=nothing)
+            xg = sys.grid.xg
+            T = eltype(xg)
+
+            result = fill!(similar(xg), zero(T))
+            nx, ny = size(xg)
+            buf = zeros(T, nx, ny)
+            half = div(sys.grid.pix_n, 2) * Float64(sys.grid.pix_size)
+            x_min, y_min = -half, -half
+            pixel_scale = sys.grid.pix_size
+
+            for (amp, positions) in pi.components
+                # ── compute per-image amplitudes ──
+                per_image_amps = if pi.intrinsic
+                    mus = _compute_magnifications(sys, positions, z_src)
+                    amp .* mus
+                else
+                    fill(amp, length(positions))
+                end
+
+                for (i, (tx, ty)) in enumerate(positions)
+                    px = (tx - x_min) / pixel_scale + 1
+                    py = (ty - x_min) / pixel_scale + 1
+                    if sys.psf !== nothing
+                        render_point!(buf, sys.psf, px, py, per_image_amps[i]; pixel_scale=pixel_scale, half=7)
+                    else
+                        ix, iy = round(Int, px), round(Int, py)
+                        if 1 <= ix <= nx && 1 <= iy <= ny
+                            buf[iy, ix] += per_image_amps[i]
+                        end
+                    end
+                end
+            end
+            copyto!(result, buf)
+            return result
+        end
+
+        # ── Magnification helper for PointImages(intrinsic=true) ──
+        #
+        #  Computes μ = 1/|det(A)| at each (x, y) via lens_hessian.
+        #  For N ≤ ~10 points this is ~5 μs → negligible vs render_point!.
+        function _compute_magnifications(sys::ForwardModel, positions, z_src)
+            mus = Real[]
+            for (x, y) in positions
+                fxx, fxy, fyy = lens_hessian(sys, [x], [y]; z_source=z_src)
+                detA = (1 - fxx[1]) * (1 - fyy[1]) - fxy[1]^2
+                push!(mus, 1 / abs(detA))
+            end
+            return mus
+        end
 
     # ── CompositeImage: recursive sum of components ──
 

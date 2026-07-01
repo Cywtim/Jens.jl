@@ -13,8 +13,13 @@
 #        return log_prior + log_likelihood
 #    end
 #
+#    # Single chain
 #    chain = lens_mh(my_logp, [0.2, 0.1, 0.05], [2.0, 5.0, 1.0];
 #                    n=2000, seed=42)
+#
+#    # Multi-start: try N random starts, pick best, run full chain
+#    chain = lens_mh_multistart(my_logp, [0.2,0.1,0.05], [2.0,5.0,1.0];
+#                               n_starts=8, n=2000, seed=42)
 #    # chain.samples  → (n_params, n_samples) Matrix
 #    # chain.logp     → log-posterior at each step
 #    # chain.accepted → acceptance count
@@ -24,7 +29,7 @@ module LensMH
 
     using Random, Statistics, LinearAlgebra
 
-    export MHResult, lens_mh, lens_mh_multi, chain, burnin, chain_stats
+    export MHResult, lens_mh, lens_mh_multi, lens_mh_multistart, chain, burnin, chain_stats
 
     """
         MHResult
@@ -59,7 +64,8 @@ module LensMH
     # Keyword arguments
       - `n::Int = 2000`:  number of iterations.
       - `step0::Vector{Float64}`:  initial per-parameter step sizes.
-        Defaults to `(upper - lower) / 100`.
+        Defaults to `(upper - lower) / 20` (5% of prior width).
+        Step size floor = `range / 200` (0.5%), ceiling = `range / 10` (10%).
       - `adapt::Bool = true`:  whether to adapt step sizes online.
         Target acceptance rate ≈ 35%.
       - `init::Union{Nothing, Vector{Float64}}`:
@@ -84,6 +90,7 @@ module LensMH
         adapt::Bool = true,
         init::Union{Nothing, Vector{Float64}} = nothing,
         seed::Int = 42,
+        n_adapt_delay::Int = 0,
     )
         d = length(lower)
         @assert length(upper) == d "lower and upper must have same length"
@@ -92,7 +99,8 @@ module LensMH
 
         # ── Initialisation ────────────────────────────────
         θ = init === nothing ? (lower .+ upper) ./ 2 : copy(init)
-        step = step0 === nothing ? (upper .- lower) ./ 500 : copy(step0)
+        range_all = upper .- lower
+        step = step0 === nothing ? range_all ./ 20 : copy(step0)
 
         # Clamp initial value inside bounds
         θ .= clamp.(θ, lower, upper)
@@ -106,6 +114,9 @@ module LensMH
         rng = MersenneTwister(seed)
 
         # ── Main loop ─────────────────────────────────────
+        # n_adapt_delay: freeze steps for first N iterations (pure random walk)
+        adaptive_now = adapt && (n_adapt_delay <= 0)
+
         for i in 1:n
             # Propose
             prop = θ .+ step .* randn(rng, d)
@@ -122,13 +133,18 @@ module LensMH
                 θ = prop
                 current_lp = prop_lp
                 accepted += 1
-                if adapt
-                    step .= min.(step .* 1.02, (upper .- lower) ./ 10)  # widen, cap at 10% of prior
+                if adaptive_now
+                    step .= min.(step .* 1.02, range_all ./ 10)
                 end
             else
-                if adapt
-                    step .= max.(step .* 0.98, (upper .- lower) ./ 1e5)  # narrow, floor at 1e-5 of prior
+                if adaptive_now
+                    step .= max.(step .* 0.98, range_all ./ 2000)
                 end
+            end
+
+            # Enable adaptation after delay
+            if !adaptive_now && i >= n_adapt_delay
+                adaptive_now = true
             end
 
             samples[:, i] .= θ
@@ -204,6 +220,73 @@ module LensMH
         end
 
         return results
+    end
+
+    # ══════════════════════════════════════════════════════════
+    #  Multi-start MH — avoids local minima
+    # ══════════════════════════════════════════════════════════
+
+    """
+        result = lens_mh_multistart(logp_fn, lower, upper; kw...)
+
+    Evaluate `logp_fn` at `n_starts` random points, pick the best,
+    run a short tuning chain to adapt step sizes, then run a full
+    production chain.
+
+    This is the recommended entry point for lens-model MCMC where
+    the posterior may have multiple local minima.
+
+    # Keyword arguments (same as `lens_mh`, plus):
+      - `n_starts::Int = 8`:  number of random-start evaluations.
+        Increase for complex posteriors (16–32).
+      - `n_warmup::Int = max(500, n ÷ 2)`:  tuning steps to adapt
+        step sizes near the best start point.
+      - `n::Int = 2000`:  production chain length.
+      - `seed::Int = 42`:  RNG seed.
+
+    # Example
+    ```julia
+    result = lens_mh_multistart(logp_fn, [0.1, 0.1], [2.0, 5.0];
+                                n_starts=16, n=3000, seed=42)
+    ```
+    """
+    function lens_mh_multistart(
+        logp_fn,
+        lower::Vector{Float64},
+        upper::Vector{Float64};
+        n_starts::Int = 8,
+        n_warmup::Int = 0,
+        n::Int = 2000,
+        step0::Union{Nothing, Vector{Float64}} = nothing,
+        adapt::Bool = true,
+        seed::Int = 42,
+    )
+        n_starts >= 1 || error("n_starts must be >= 1, got $n_starts")
+        warmup_n = n_warmup > 0 ? n_warmup : max(500, n ÷ 2)
+
+        best_lp = -Inf
+        best_init = nothing
+
+        for k in 1:n_starts
+            init_k = lower .+ rand(length(lower)) .* (upper .- lower)
+            lp_k = logp_fn(init_k)
+            if lp_k > best_lp
+                best_lp = lp_k
+                best_init = copy(init_k)
+            end
+        end
+
+        # Short tuning run to let step sizes adapt near the best point
+        if adapt
+            best_init = lens_mh(logp_fn, lower, upper;
+                                n=warmup_n, step0=step0, adapt=true,
+                                init=best_init, seed=seed + n_starts + 1).samples[:, end]
+        end
+
+        # Production chain from tuned start
+        return lens_mh(logp_fn, lower, upper;
+                       n=n, step0=step0, adapt=true,
+                       init=best_init, seed=seed + n_starts + 2)
     end
 
     # ══════════════════════════════════════════════════════════

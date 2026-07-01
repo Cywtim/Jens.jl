@@ -55,8 +55,9 @@ module LensGenerator
             "LensedPlane.lens_derivative requires z_source=<redshift>. " *
             "Pass it explicitly or use ForwardModel which provides it automatically.")
         ratio = lens_distance_ratio(lp.cosmology, lp.z_lens, float(z_source))
+        ratio_T = eltype(x)(ratio)
         aphys_x, aphys_y = lens_derivative(lp.lens, x, y; kwargs...)
-        return aphys_x .* ratio, aphys_y .* ratio
+        return aphys_x .* ratio_T, aphys_y .* ratio_T
     end
 
     function lens_hessian(lp::LensedPlane, x, y; z_source=nothing, kwargs...)
@@ -64,8 +65,9 @@ module LensGenerator
             "LensedPlane.lens_hessian requires z_source=<redshift>. " *
             "Pass it explicitly or use ForwardModel which provides it automatically.")
         ratio = lens_distance_ratio(lp.cosmology, lp.z_lens, float(z_source))
+        ratio_T = eltype(x)(ratio)
         fxx, fxy, fyy = lens_hessian(lp.lens, x, y; kwargs...)
-        return fxx .* ratio, fxy .* ratio, fyy .* ratio
+        return fxx .* ratio_T, fxy .* ratio_T, fyy .* ratio_T
     end
 
     function lens_potential(lp::LensedPlane, x, y; z_source=nothing, kwargs...)
@@ -73,8 +75,9 @@ module LensGenerator
             "LensedPlane.lens_potential requires z_source=<redshift>. " *
             "Pass it explicitly or use ForwardModel which provides it automatically.")
         ratio = lens_distance_ratio(lp.cosmology, lp.z_lens, float(z_source))
+        ratio_T = eltype(x)(ratio)
         psi = lens_potential(lp.lens, x, y; kwargs...)
-        return psi .* ratio
+        return psi .* ratio_T
     end
 
     function lens_check(lp::LensedPlane; kwargs...)
