@@ -14,7 +14,7 @@ module LensPSO
 
 using Random, Statistics
 using Jens.LensMH: lens_mh, MHResult, chain, chain_stats
-import Jens.LensMH: chain as mh_chain_fn  # for clarity
+import Jens.LensMH: chain, chain_stats
 
 export PSOResult, lens_pso_mh, chain, chain_stats
 

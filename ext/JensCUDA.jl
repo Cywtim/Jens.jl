@@ -145,4 +145,11 @@ end
 Jens.gpu_grid(; pix_n=256, pix_size::Real=Float32(0.09)) =
     GenGrid_GPU(; pix_n, pix_size=Float32(pix_size))
 
+# ═══════════════════════════════════════════════════════════════
+#  GPU randn_like — overload for CuArray
+# ═══════════════════════════════════════════════════════════════
+import Jens.LensUtils: randn_like
+randn_like(x::CuArray, dims::Int...) = CUDA.randn(eltype(x), dims...)
+randn_like(x::CuArray)              = CUDA.randn(eltype(x), size(x)...)
+
 end # module JensCUDA

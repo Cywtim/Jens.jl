@@ -1,8 +1,9 @@
 module LensUtils
 
-    using LinearAlgebra
+    using LinearAlgebra, Random
 
     export  LensGrid, LensPolGrid, LensInverse, LensRotation
+    export  randn_like
     export  Pol2Car, Car2Pol
     export  e2phiq, phiq2e
     export  ShearPol2Car, ShearCar2Pol
@@ -243,7 +244,20 @@ module LensUtils
     end
 
     # ═══════════════════════════════════════════════════════════════
-    #  9. UTILITY
+    #  9. DEVICE-AGNOSTIC RANDOM
+    # ═══════════════════════════════════════════════════════════════
+
+    """
+        randn_like(x, dims...)
+
+    Generate Gaussian noise matching the device (CPU/GPU) of reference array `x`.
+    When CUDA is loaded, CuArray input dispatches to CUDA.randn.
+    """
+    randn_like(x::AbstractArray, dims::Int...) = Random.randn(eltype(x), dims...)
+    randn_like(x::AbstractArray)              = Random.randn(eltype(x), size(x)...)
+
+    # ═══════════════════════════════════════════════════════════════
+    #  10. UTILITY
     # ═══════════════════════════════════════════════════════════════
 
     """

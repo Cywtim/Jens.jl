@@ -72,18 +72,18 @@ export LensCanvas
     #  Create canvas
     # ═══════════════════════════════════════════════════════════════
     function LensCanvas(;
-            xlims::NTuple{2,Real}   = (-2.0, 2.0),
-            ylims::NTuple{2,Real}   = (-2.0, 2.0),
-            figsize::NTuple{2,Int}  = (6, 6),
+            xlims::NTuple{2,Real} = (-2.0, 2.0),
+            ylims::NTuple{2,Real} = (-2.0, 2.0),
+            figsize::NTuple{2,Int} = (6, 6),
             kwargs...
         )
             plot(;
                 aspect_ratio = :equal,
-                xlims        = xlims,
-                ylims        = ylims,
-                size         = (figsize[1] * 100, figsize[2] * 100),
-                xlabel       = "x (arcsec)",
-                ylabel       = "y (arcsec)",
+                xlims = xlims,
+                ylims = ylims,
+                size = (figsize[1] * 100, figsize[2] * 100),
+                xlabel = "x (pix)",
+                ylabel = "y (pix)",
                 kwargs...
             )
     end
@@ -101,9 +101,9 @@ export LensCanvas
             canvas,
             xg::AbstractArray, yg::AbstractArray,
             image::AbstractArray;
-            colormap                    = :dense,
+            colormap = :dense,
             clim::Union{Tuple,Nothing}  = nothing,
-            colorbar::Bool              = true,
+            colorbar::Bool = true,
             kwargs...
         )
         xvec = xg[:, 1]
@@ -111,8 +111,8 @@ export LensCanvas
         clim_val = clim === nothing ? extrema(image) : clim
 
         heatmap!(canvas, xvec, yvec, image';
-                 c        = colormap,
-                 clim     = clim_val,
+                 c = colormap,
+                 clim = clim_val,
                  colorbar = colorbar,
                  kwargs...)
     end
@@ -136,12 +136,12 @@ export LensCanvas
     function PlotPlane!(
             canvas,
             image::AbstractMatrix;
-            pixel_scale::Real           = 1.0,
-            x0::Real                    = 0.0,
-            y0::Real                    = 0.0,
-            colormap                    = :dense,
+            pixel_scale::Real = 1.0,
+            x0::Real = 0.0,
+            y0::Real = 0.0,
+            colormap = :dense,
             clim::Union{Tuple,Nothing}  = nothing,
-            colorbar::Bool              = true,
+            colorbar::Bool = true,
             kwargs...
         )
         ny, nx = size(image)
@@ -209,8 +209,8 @@ export LensCanvas
             canvas,
             points::AbstractMatrix;
             label::String   = "",
-            color           = :red,
-            ms::Int         = 2,
+            color = :red,
+            ms::Int = 2,
             marker::Symbol  = :circle,
             kwargs...
         )
@@ -245,10 +245,10 @@ export LensCanvas
             canvas,
             xg::AbstractMatrix{<:Real}, yg::AbstractMatrix{<:Real},
             ax::AbstractMatrix{<:Real}, ay::AbstractMatrix{<:Real};
-            step::Int                     = 0,
-            color                         = :black,
-            label::String                 = "",
-            arrow                         = nothing,
+            step::Int = 0,
+            color = :black,
+            label::String = "",
+            arrow = nothing,
             kwargs...
         )
         # Auto-scale step to get ~20 arrows per axis
@@ -296,10 +296,10 @@ export LensCanvas
     function PlotCriticalCurve!(canvas;
             LensModel,
             LensKwargs::Dict,
-            adaptive::Bool          = true,
-            color                   = :cyan,
-            ms::Int                 = 2,
-            label::String           = "critical curve",
+            adaptive::Bool = true,
+            color = :cyan,
+            ms::Int = 2,
+            label::String = "critical curve",
             kwargs...
         )
         if adaptive
@@ -324,10 +324,10 @@ export LensCanvas
     function PlotCaustic!(canvas;
             LensModel,
             LensKwargs::Dict,
-            adaptive::Bool          = true,
-            color                   = :red,
-            ms::Int                 = 2,
-            label::String           = "caustic",
+            adaptive::Bool = true,
+            color = :red,
+            ms::Int = 2,
+            label::String = "caustic",
             kwargs...
         )
         if adaptive
@@ -361,9 +361,9 @@ export LensCanvas
             beta::Vector{Float64}   = [0.0, 0.0],
             LensModel,
             LensKwargs::Dict,
-            style::Symbol           = :heatmap,
-            colormap                = :viridis,
-            colorbar::Bool          = true,
+            style::Symbol = :heatmap,
+            colormap = :viridis,
+            colorbar::Bool = true,
             kwargs...
         )
         phi = LensBase.LensFermat(xg, yg, beta;
@@ -395,9 +395,9 @@ export LensCanvas
             xg::AbstractArray, yg::AbstractArray;
             LensModel,
             LensKwargs::Dict,
-            log_scale::Bool         = true,
-            colormap                = :RdBu,
-            colorbar::Bool          = true,
+            log_scale::Bool = true,
+            colormap = :RdBu,
+            colorbar::Bool = true,
             kwargs...
         )
         magr = LensBase.LensDetJacobian(xg, yg;
@@ -425,20 +425,20 @@ export LensCanvas
         Plots.savefig(p, "lens.png")
     """
     function PlotLens(;
-            xl::Float64             = 2.0,
-            nx::Int                 = 256,
+            xl::Float64 = 2.0,
+            nx::Int = 256,
             beta::Vector{Float64}   = [0.0, 0.0],
             LensModel,
             LensKwargs::Dict,
-            SourceProfile                  = nothing,
-            SourceKwargs::Dict      = Dict(),
-            log_mag::Bool           = true,
-            show_critical::Bool     = true,
-            show_caustic::Bool      = true,
-            adaptive::Bool          = true,
+            SourceProfile = nothing,
+            SourceKwargs::Dict = Dict(),
+            log_mag::Bool = true,
+            show_critical::Bool = true,
+            show_caustic::Bool = true,
+            adaptive::Bool = true,
             figsize::NTuple{2,Int}  = (6, 6),
-            colormap                = :inferno,
-            title::String           = "lens system",
+            colormap = :inferno,
+            title::String = "lens system",
             kwargs...
         )
         # 1. Grid

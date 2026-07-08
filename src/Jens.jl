@@ -49,6 +49,7 @@ module Jens
     include("sampling/LensHMC.jl")     # HMC/NUTS via AdvancedHMC + FiniteDiff
     include("sampling/LensSample.jl")  # two-stage: HMC explore → MH refine
     include("sampling/LensTuring.jl")  # Turing @model wrappers
+    include("sampling/LensPSO.jl")     # PSO global search → M-H refinement
 
     # ═══════════════════════════════════════════════════════════════
     #  Exports
@@ -59,7 +60,7 @@ module Jens
     export LensSystem
     export LensModel, LightModel
     export LensPlots
-    export LensTuring, LensMH, LensHMC, LensSample
+    export LensTuring, LensMH, LensHMC, LensSample, LensPSO
 
     # ═══════════════════════════════════════════════════════════════
     #  GPU convenience (filled by ext/JensCUDA.jl when CUDA loaded)

@@ -180,7 +180,7 @@ module LensSystem
 
         # render_point! does scalar indexing → render on CPU buffer
         nx, ny = size(xg)
-        buf = zeros(T, nx, ny)  # always CPU
+        buf = zeros(T, nx, ny)  # always CPU: render_point! uses scalar indexing
 
         # Compute grid origin from metadata (avoids GPU scalar indexing)
         half = div(sys.grid.pix_n, 2) * Float64(sys.grid.pix_size)
@@ -190,16 +190,23 @@ module LensSystem
 
         for (tx, ty, mu) in images
             F = pt.flux * abs(mu)
-            px = (tx - x_min) / pixel_scale + 1
-            py = (ty - y_min) / pixel_scale + 1
+            # Grid convention (ndgrid): rows=X, cols=Y
+            # pixel_to_row  ← tx (X coordinate maps to row)
+            # pixel_to_col  ← ty (Y coordinate maps to column)
+            pix_row = (tx - x_min) / pixel_scale + 1
+            pix_col = (ty - y_min) / pixel_scale + 1
             if sys.psf !== nothing
-                render_point!(buf, sys.psf, px, py, F;
+                # render_point! takes (x_src=column, y_src=row)
+                # and writes to image[row, col], so:
+                #   x_src ← pix_col (Y → column)
+                #   y_src ← pix_row (X → row)
+                render_point!(buf, sys.psf, pix_col, pix_row, F;
                               pixel_scale=pixel_scale, half=7)
             else
-                ix = round(Int, px)
-                iy = round(Int, py)
-                if 1 <= ix <= size(buf, 2) && 1 <= iy <= size(buf, 1)
-                    buf[iy, ix] += F
+                ir = round(Int, pix_row)
+                ic = round(Int, pix_col)
+                if 1 <= ir <= size(buf, 1) && 1 <= ic <= size(buf, 2)
+                    buf[ir, ic] += F
                 end
             end
         end
@@ -218,7 +225,7 @@ module LensSystem
 
             result = fill!(similar(xg), zero(T))
             nx, ny = size(xg)
-            buf = zeros(T, nx, ny)
+            buf = zeros(T, nx, ny)  # always CPU: render_point! uses scalar indexing
             half = div(sys.grid.pix_n, 2) * Float64(sys.grid.pix_size)
             x_min, y_min = -half, -half
             pixel_scale = sys.grid.pix_size
@@ -233,14 +240,17 @@ module LensSystem
                 end
 
                 for (i, (tx, ty)) in enumerate(positions)
-                    px = (tx - x_min) / pixel_scale + 1
-                    py = (ty - x_min) / pixel_scale + 1
+                    # Grid convention (ndgrid): rows=X, cols=Y
+                    pix_row = (tx - x_min) / pixel_scale + 1
+                    pix_col = (ty - y_min) / pixel_scale + 1
                     if sys.psf !== nothing
-                        render_point!(buf, sys.psf, px, py, per_image_amps[i]; pixel_scale=pixel_scale, half=7)
+                        # render_point! takes (x_src=column, y_src=row)
+                        # so: x_src ← pix_col, y_src ← pix_row
+                        render_point!(buf, sys.psf, pix_col, pix_row, per_image_amps[i]; pixel_scale=pixel_scale, half=7)
                     else
-                        ix, iy = round(Int, px), round(Int, py)
-                        if 1 <= ix <= nx && 1 <= iy <= ny
-                            buf[iy, ix] += per_image_amps[i]
+                        ir, ic = round(Int, pix_row), round(Int, pix_col)
+                        if 1 <= ir <= nx && 1 <= ic <= ny
+                            buf[ir, ic] += per_image_amps[i]
                         end
                     end
                 end
