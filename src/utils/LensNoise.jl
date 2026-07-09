@@ -43,9 +43,11 @@ Homoskedastic Gaussian noise with standard deviation `σ`.
 """
 struct GaussNoise{T<:Real} <: LensNoise
     σ::T
+    # Inner constructor: auto-promote to Float64
+    function GaussNoise(σ::Real)
+        return new{Float64}(Float64(σ))
+    end
 end
-# Outer constructor: auto-promote to Float64
-GaussNoise(σ::Real) = GaussNoise{Float64}(Float64(σ))
 
 """
     PoissNoise(exp_time::Real)
@@ -61,9 +63,11 @@ use true Poisson noise via `Distributions.Poisson` instead.
 """
 struct PoissNoise{T<:Real} <: LensNoise
     exp_time::T
+    # Inner constructor: auto-promote to Float64
+    function PoissNoise(exp_time::Real)
+        return new{Float64}(Float64(exp_time))
+    end
 end
-# Outer constructor: auto-promote to Float64
-PoissNoise(exp_time::Real) = PoissNoise{Float64}(Float64(exp_time))
 
 
 # ═══════════════════════════════════════════════════════════════

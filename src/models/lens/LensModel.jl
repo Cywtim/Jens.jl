@@ -14,5 +14,6 @@ module LensModel
     include("PointMass.jl")
     include("ComLens.jl")
     include("SpiralMultipole.jl")
+    include("PseudoJaffe.jl")
 
 end

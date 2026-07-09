@@ -56,14 +56,46 @@ module LensSystem
     img = render(sys)
     ```
     """
-    struct ForwardModel{L, S, P, G} <: AbstractLens
+    struct ForwardModel{L, S, P, G, M} <: AbstractLens
         lens_plane::L
         source_plane::S
         psf::P
         grid::G
+        mask::M       # AbstractMatrix{Bool} or Nothing
     end
 
-    function ForwardModel(; lens_plane, source_plane, grid, psf=nothing, z_source=nothing)
+    """
+        ForwardModel(; lens_plane, source_plane, grid, psf=nothing, mask=nothing, z_source=nothing)
+
+    Complete forward-model container for gravitational lensing.
+
+    # Arguments
+    - `lens_plane`   : `LensedPlane` or `MultiLensedPlane` — mass model
+    - `source_plane` : `LightPlane` or `MultiLightPlane` — light model
+    - `grid`         : `Grid` or `GridGPU` — observation grid
+    - `psf`          : `AbstractPSF` or `nothing` — instrumental blur
+    - `mask`         : `AbstractMatrix{Bool}` or `nothing` — pixel mask.
+      `true` = include in fit.  Stored in system; used automatically
+      by `masked_logp(sys, data, σ)`.  Default: `nothing` (all pixels).
+
+    # Example
+    ```julia
+    mask = combine(annular_mask(grid, 0.5, 2.0),
+                   invert(circular_mask(grid, 0.2)); op=&)
+
+    sys = ForwardModel(
+        lens_plane   = LensedPlane(lens; z_lens=0.3, cosmology=cosmo),
+        source_plane = LightPlane(src; z=1.5),
+        grid         = GenGrid(pix_n=256, pix_size=0.09),
+        psf          = GaussianPSF(0.05),
+        mask         = mask,   # ← mask lives in the system
+    )
+    img = render(sys)               # full image (mask doesn't affect physics)
+    logp = masked_logp(sys, data, σ)  # mask read automatically
+    ```
+    """
+    function ForwardModel(; lens_plane, source_plane, grid,
+                           psf=nothing, mask=nothing, z_source=nothing)
         # Auto-wrap bare AbstractLight → LightPlane when z_source is given
         if source_plane isa AbstractLight
             z_source !== nothing || error(
@@ -73,7 +105,7 @@ module LensSystem
             )
             source_plane = LightPlane(source_plane; z=z_source)
         end
-        return ForwardModel(lens_plane, source_plane, psf, grid)
+        return ForwardModel(lens_plane, source_plane, psf, grid, mask)
     end
 
     # ── AbstractLens interface: forward to lens_plane ──
@@ -284,6 +316,71 @@ module LensSystem
         return result
     end
 
+
+    # ═══════════════════════════════════════════════════════════════
+    #  masked_logp / masked_chi2 — render → compare → scalar
+    # ═══════════════════════════════════════════════════════════════
+
+    """
+        chi2 = masked_chi2(sys::ForwardModel, data, σ²::Real, mask)
+        logp = masked_logp(sys::ForwardModel, data, σ::Real, mask)
+
+    Full pipeline in one call: render → residual → masked χ² → logp.
+
+    GPU-safe: all operations are pure broadcast, zero scalar indexing
+    when `data`, `mask` are on the same device as the grid.
+
+    # Arguments
+    - `sys`:  `ForwardModel` — lens, source, PSF, grid
+    - `data`: observed image (same shape as `render(sys)`)
+    - `σ²` or `σ`: noise variance / standard deviation
+    - `mask`: `AbstractMatrix{Bool}` — `true` = include pixel.
+      Pass `nothing` to use all pixels.
+
+    # Returns
+    - `masked_chi2` → Σᵢ (dataᵢ − modelᵢ)² · maskᵢ / σ²
+    - `masked_logp`  → −½ · masked_chi2
+
+    # Example
+    ```julia
+    mask = combine(annular_mask(grid, 0.5, 2.0),
+                   invert(circular_mask(grid, 0.2)); op=&)
+
+    function my_logp(params)
+        sys = build_system(params)
+        return masked_logp(sys, data, 0.03, mask)  # one line
+    end
+
+    chain = lens_mh(my_logp, lower, upper; n=2000)
+    ```
+    """
+    function masked_chi2(sys::ForwardModel, data, σ²::Real, mask)
+        model = render(sys)
+        diff² = (data .- model).^2
+        T = eltype(data)
+        return sum(diff² .* mask) / T(σ²)
+    end
+
+    function masked_chi2(sys::ForwardModel, data, σ²::Real, ::Nothing)
+        model = render(sys)
+        diff² = (data .- model).^2
+        return sum(diff²) / eltype(data)(σ²)
+    end
+
+    # ── One-argument-less: read mask from sys.mask ──
+    function masked_chi2(sys::ForwardModel, data, σ²::Real)
+        return masked_chi2(sys, data, σ², sys.mask)
+    end
+
+    function masked_logp(sys::ForwardModel, data, σ::Real, mask)
+        return -masked_chi2(sys, data, σ^2, mask) / 2
+    end
+
+    function masked_logp(sys::ForwardModel, data, σ::Real)
+        return masked_logp(sys, data, σ, sys.mask)
+    end
+
+    export masked_chi2, masked_logp
 
     # ═══════════════════════════════════════════════════════════════
     #  Helpers
