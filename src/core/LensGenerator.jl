@@ -187,7 +187,7 @@ module LensGenerator
             length(p) == 2 ? (p[1], p[2], NamedTuple()) : p
             for p in planes
         )
-        return MultiLensedPlane(_normalized, z_source, cosmology)
+        return MultiLensedPlane(_normalized, Float32(z_source), cosmology)
     end
 
     # ── Internal: extract per-plane kwargs, merge with shared kwargs ──

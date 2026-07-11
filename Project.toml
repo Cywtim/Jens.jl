@@ -42,7 +42,7 @@ CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 JensCUDA = "CUDA"
 
 [compat]
-julia = "1.10.1"
+julia = "1.12"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

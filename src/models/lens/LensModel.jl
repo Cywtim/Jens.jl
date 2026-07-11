@@ -15,5 +15,8 @@ module LensModel
     include("ComLens.jl")
     include("SpiralMultipole.jl")
     include("PseudoJaffe.jl")
+    include("tNFW.jl")
+    include("SubhaloPopulation.jl")
+    include("MultipoleEPL.jl")
 
 end

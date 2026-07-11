@@ -3,7 +3,7 @@ module LensCosmo
     import Cosmology
     using Cosmology
     export Cosmology
-    export angular_diameter_distance, lens_distance_ratio
+    export angular_diameter_distance, lens_distance_ratio, time_delay_distance
 
     # ═══════════════════════════════════════════════════════════════
     #  Angular diameter distance
@@ -47,6 +47,32 @@ module LensCosmo
         D_s  = Cosmology.angular_diameter_dist(cosmo, Float64(z_source))
         D_ls = Cosmology.angular_diameter_dist(cosmo, Float64(z_lens), Float64(z_source))
         return D_ls / D_s
+    end
+
+    # ═══════════════════════════════════════════════════════════════
+    #  Time-delay distance
+    #
+    #  D_Δt = (1 + z_lens) · D_l · D_s / D_ls
+    #
+    #  Multiplied by the Fermat potential τ(θ) (in rad²) and
+    #  divided by c, this gives the light travel-time delay.
+    # ═══════════════════════════════════════════════════════════════
+
+    """
+        time_delay_distance(cosmo::AbstractCosmology, z_lens::Real, z_source::Real) → Float64
+
+    Compute the time-delay distance:
+
+        D_Δt = (1 + z_lens) · D(0, z_lens) · D(0, z_source) / D(z_lens, z_source)
+
+    Returns the distance in Mpc as a plain `Float64`.
+    """
+    function time_delay_distance(cosmo::Cosmology.AbstractCosmology, z_lens::Real, z_source::Real)
+        D_l  = Cosmology.angular_diameter_dist(cosmo, Float64(z_lens))
+        D_s  = Cosmology.angular_diameter_dist(cosmo, Float64(z_source))
+        D_ls = Cosmology.angular_diameter_dist(cosmo, Float64(z_lens), Float64(z_source))
+        result = (1 + z_lens) * D_l * D_s / D_ls
+        return result.val   # strip Mpc unit → plain Float64
     end
 
     end
