@@ -25,7 +25,9 @@ module LensSystem
     using Jens.LensSolver: solve_images, batch_solve_images
     import Jens.LensCosmo: time_delay_distance
 
-    export ForwardModel, render, LensTimeDelay
+    export ForwardModel, render
+    export source_redshift, source_beta, get_cosmology, get_z_lens, maybe_z_source
+    export masked_chi2, masked_logp
 
     # ═══════════════════════════════════════════════════════════════
     #  Struct
@@ -113,17 +115,17 @@ module LensSystem
 
     lens_derivative(sys::ForwardModel, x, y; z_source=nothing, kwargs...) =
         lens_derivative(sys.lens_plane, x, y;
-                         z_source=something(z_source, _source_z(sys.source_plane)),
+                         z_source=something(z_source, source_redshift(sys.source_plane)),
                          kwargs...)
 
     lens_hessian(sys::ForwardModel, x, y; z_source=nothing, kwargs...) =
         lens_hessian(sys.lens_plane, x, y;
-                      z_source=something(z_source, _source_z(sys.source_plane)),
+                      z_source=something(z_source, source_redshift(sys.source_plane)),
                       kwargs...)
 
     lens_potential(sys::ForwardModel, x, y; z_source=nothing, kwargs...) =
         lens_potential(sys.lens_plane, x, y;
-                        z_source=something(z_source, _source_z(sys.source_plane)),
+                        z_source=something(z_source, source_redshift(sys.source_plane)),
                         kwargs...)
 
     lens_check(sys::ForwardModel; kwargs...) =
@@ -131,26 +133,26 @@ module LensSystem
 
     # ── Extract redshift from source plane ──
 
-    _source_z(lp::LightPlane) = lp.z
-    _source_z(mlp::MultiLightPlane) = mlp.planes[1][2]
+    source_redshift(lp::LightPlane) = lp.z
+    source_redshift(mlp::MultiLightPlane) = mlp.planes[1][2]
 
     # ── Extract source position from source plane ──
 
-    _source_beta(lp::LightPlane) = lp.light isa PointImage ?
+    source_beta(lp::LightPlane) = lp.light isa PointImage ?
         Float64[lp.light.beta_x, lp.light.beta_y] : Float64[0., 0.]
-    _source_beta(::MultiLightPlane) = Float64[0., 0.]
+    source_beta(::MultiLightPlane) = Float64[0., 0.]
 
     # ── Extract cosmology info from lens plane ──
 
-    _get_cosmology(lp::LensedPlane) = lp.cosmology
-    _get_cosmology(ml::MultiLensedPlane) = ml.cosmology
+    get_cosmology(lp::LensedPlane) = lp.cosmology
+    get_cosmology(ml::MultiLensedPlane) = ml.cosmology
 
-    _get_z_lens(lp::LensedPlane) = lp.z_lens
-    _get_z_lens(ml::MultiLensedPlane) = ml.planes[1][2]
+    get_z_lens(lp::LensedPlane) = lp.z_lens
+    get_z_lens(ml::MultiLensedPlane) = ml.planes[1][2]
 
     # MultiLensedPlane carries own z_source; LensedPlane does not
-    _maybe_z_source(::LensedPlane) = nothing
-    _maybe_z_source(ml::MultiLensedPlane) = ml.z_source
+    maybe_z_source(::LensedPlane) = nothing
+    maybe_z_source(ml::MultiLensedPlane) = ml.z_source
 
 
     # ═══════════════════════════════════════════════════════════════
@@ -166,8 +168,8 @@ module LensSystem
     """
     function LensFermat(sys::ForwardModel; beta=nothing,
                                        z_source=nothing, kwargs...)
-        zs = something(z_source, _source_z(sys.source_plane))
-        bx = something(beta, _source_beta(sys.source_plane))
+        zs = something(z_source, source_redshift(sys.source_plane))
+        bx = something(beta, source_beta(sys.source_plane))
         xg, yg = sys.grid.xg, sys.grid.yg
         return LensFermat(xg, yg, bx;
                           LensModel=sys.lens_plane,
@@ -186,76 +188,10 @@ module LensSystem
     and `sys.source_plane`. Returns the time-delay distance in Mpc.
     """
     function time_delay_distance(sys::ForwardModel)
-        cosmo = _get_cosmology(sys.lens_plane)
-        z_lens = _get_z_lens(sys.lens_plane)
-        zs = _source_z(sys.source_plane)
+        cosmo = get_cosmology(sys.lens_plane)
+        z_lens = get_z_lens(sys.lens_plane)
+        zs = source_redshift(sys.source_plane)
         return time_delay_distance(cosmo, z_lens, zs)
-    end
-
-
-    # ═══════════════════════════════════════════════════════════════
-    #  LensTimeDelay — time-delay surface and image-pair delay
-    # ═══════════════════════════════════════════════════════════════
-
-    const _ARCSEC2_TO_RAD2 = (π / 180 / 3600)^2
-    const _C_LIGHT_MPC_S   = 9.71561189025635e-15  # c in Mpc/s
-
-    """
-        Δt = LensTimeDelay(xg, yg, beta=[0.,0.];
-                           LensModel, LensKwargs=NamedTuple(), z_source=nothing)
-
-    Compute the time-delay surface (in **seconds**) on a grid.
-
-        c · Δt(θ, β) = D_Δt  ·  τ(θ, β)
-
-    where D_Δt is the time-delay distance and τ is the angular Fermat
-    potential.  Requires `LensModel` to carry cosmology (`LensedPlane`,
-    `MultiLensedPlane`, or `ForwardModel`).
-
-    # Example
-    ```julia
-    # Single-plane via LensedPlane
-    Δt_map = LensTimeDelay(xg, yg, [bx, by];
-                           LensModel=lp, z_source=1.5)
-
-    # Single-plane via ForwardModel (auto-detect everything)
-    Δt_map = LensTimeDelay(sys)
-    ```
-    """
-    function LensTimeDelay(xg::AbstractMatrix, yg::AbstractMatrix,
-                            beta=[0.,0.]; LensModel,
-                            LensKwargs=NamedTuple(), z_source=nothing)
-        cosmo = _get_cosmology(LensModel)
-        z_lens = _get_z_lens(LensModel)
-        zs = something(z_source, _maybe_z_source(LensModel))
-
-        D_dt = time_delay_distance(cosmo, z_lens, zs)
-        tau  = LensFermat(xg, yg, beta;
-                          LensModel=LensModel, LensKwargs=LensKwargs, z_source=zs)
-
-        tau_rad2 = tau .* _ARCSEC2_TO_RAD2    # arcsec² → rad²
-        return D_dt .* tau_rad2 ./ _C_LIGHT_MPC_S   # seconds
-    end
-
-    """
-        Δt = LensTimeDelay(sys::ForwardModel; beta=nothing, z_source=nothing, kwargs...)
-
-    Compute the time-delay surface for a complete lens system.
-    All parameters are auto-detected from the system.
-
-    # Example
-    ```julia
-    sys = ForwardModel(lens_plane=lp, source_plane=LightPlane(agn; z=1.5), grid=grid)
-    Δt_map = LensTimeDelay(sys)   # everything auto-detected
-    ```
-    """
-    function LensTimeDelay(sys::ForwardModel; beta=nothing,
-                            z_source=nothing, kwargs...)
-        zs = something(z_source, _source_z(sys.source_plane))
-        bx = something(beta, _source_beta(sys.source_plane))
-        xg, yg = sys.grid.xg, sys.grid.yg
-        return LensTimeDelay(xg, yg, bx;
-                             LensModel=sys.lens_plane, z_source=zs, kwargs...)
     end
 
 
@@ -505,7 +441,6 @@ module LensSystem
         return masked_logp(sys, data, σ, sys.mask)
     end
 
-    export masked_chi2, masked_logp
 
     # ═══════════════════════════════════════════════════════════════
     #  Helpers

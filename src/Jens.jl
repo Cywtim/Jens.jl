@@ -16,6 +16,7 @@ module Jens
     # ═══════════════════════════════════════════════════════════════
     # # include("core/LensGenerator.jl")  # 旧顺序: Generator 在 Cosmo 前
     # 改为 Cosmo 先加载, 因为 LensGenerator 依赖 LensCosmo.lens_distance_ratio
+    include("utils/LensConstants.jl")
     include("utils/LensCosmo.jl")
     # # include("utils/LensLOS.jl")       # 旧路径: 已移至 models/lens/
     include("models/lens/LensLOS.jl")     # LOS tidal matrix
@@ -32,6 +33,8 @@ module Jens
     #  System
     # ═══════════════════════════════════════════════════════════════
     include("core/LensSystem.jl")
+    include("utils/LensTimeDelay.jl")   # needs ForwardModel from LensSystem
+    using .TimeDelay: LensTimeDelay, image_time_delays
 
     # ═══════════════════════════════════════════════════════════════
     #  Models
@@ -57,8 +60,9 @@ module Jens
     # ═══════════════════════════════════════════════════════════════
     export LensUtils, LensBase
     export LensFITS
-    export LensGenerator, LensCosmo, LensLOS, LensSolver, LensNoise, LensPSF, LensMask, WFC3
+    export LensGenerator, LensCosmo, LensConstants, LensLOS, LensSolver, LensNoise, LensPSF, LensMask, WFC3
     export LensSystem
+    export LensTimeDelay, image_time_delays
     export LensModel, LightModel
     export LensPlots
     export LensTuring, LensMH, LensHMC, LensSample, LensPSO
