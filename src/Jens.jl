@@ -35,6 +35,8 @@ module Jens
     include("core/LensSystem.jl")
     include("utils/LensTimeDelay.jl")   # needs ForwardModel from LensSystem
     using .TimeDelay: LensTimeDelay, image_time_delays
+    include("utils/LensPointLikelihood.jl")  # point-source χ² (images + delays)
+    include("utils/LensAdaptiveGrid.jl")     # adaptive sub-sampling near caustics
 
     # ═══════════════════════════════════════════════════════════════
     #  Models
@@ -63,6 +65,7 @@ module Jens
     export LensGenerator, LensCosmo, LensConstants, LensLOS, LensSolver, LensNoise, LensPSF, LensMask, WFC3
     export LensSystem
     export LensTimeDelay, image_time_delays
+    export LensPointLikelihood, LensAdaptiveGrid
     export LensModel, LightModel
     export LensPlots
     export LensTuring, LensMH, LensHMC, LensSample, LensPSO
