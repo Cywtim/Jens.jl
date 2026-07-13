@@ -2,9 +2,18 @@ module LensAdaptiveGrid
 
     # ═══════════════════════════════════════════════════════════════
     #  LensAdaptiveGrid — critical-curve-aware pixel refinement
+    #                       + adaptive rendering
     #
-    #  Detects pixels near the critical curve (|det J| ≪ 1) and
-    #  returns sub-pixel sampling positions for those pixels.
+    #  Two-stage pipeline:
+    #
+    #    1. DETECTION  — RefinementMap(grid, lens; threshold, sub_n)
+    #       Computes which pixels lie near the critical curve
+    #       (|det(J)| ≪ 1) and pre-computes sub-pixel offsets.
+    #
+    #    2. RENDERING  — render_adaptive(sys, ref)
+    #       Single-ray broadcast for most pixels, sub_n² rays for
+    #       refined pixels.  Designed for MCMC: compute `ref` once
+    #       before the chain, reuse across all iterations.
     #
     #  The critical curve is where det(A) = (1−κ)² − γ² = 0.
     #  Pixels crossing this curve are stretched across large
@@ -13,16 +22,24 @@ module LensAdaptiveGrid
     #  multiple rays per pixel in these regions.
     #
     #  Usage:
-    #    ref = RefinementMap(grid, lens; threshold=0.1, sub_n=4)
-    #    ref.needs_refine   # BitMatrix — which pixels need sub-sampling
-    #    offsets, weights   # sub-pixel (dx, dy) offsets and weights
+    #    ref = RefinementMap(grid, fiducial_lens; threshold=0.3, sub_n=4)
+    #    model = render_adaptive(sys, ref)
     # ═══════════════════════════════════════════════════════════════
 
-    using Jens.LensBase: lens_hessian
+    using Jens.LensBase: lens_hessian, lens_derivative
+    using Jens.LightModel: AbstractLight, ExtendedSource, PointImage,
+                           PointImages, CompositeImage, evaluate_source
+    using Jens.LensGenerator: LensedPlane, MultiLensedPlane,
+                              LightPlane, MultiLightPlane
+    using Jens.LensPSF: conv_psf
+    import Jens.LensSystem: ForwardModel
 
-    export RefinementMap, adaptive_grid_info
+    export RefinementMap, adaptive_grid_info, render_adaptive
 
-    # ── Struct ─────────────────────────────────────────────────────
+
+    # ═══════════════════════════════════════════════════════════════
+    #  PART 1: Detection — RefinementMap
+    # ═══════════════════════════════════════════════════════════════
 
     """
         RefinementMap(grid, lens; threshold=0.1, sub_n=4, z_source=nothing)
@@ -46,11 +63,11 @@ module LensAdaptiveGrid
     where κ, γ₁, γ₂ are derived from `lens_hessian`.  If |det(A)| falls
     below `threshold`, the pixel is flagged for sub-sampling.
 
-    # Performance note
+    # MCMC usage
 
-    Computing hessian at every pixel is O(N²).  For large grids, consider:
-    - Using a coarser detection grid (stride every 2-4 pixels)
-    - Computing once for a fiducial model and reusing during MCMC
+    Compute once before the chain with a fiducial lens model and a
+    conservative `threshold` (0.2–0.3) to cover the parameter range
+    explored by MCMC.  Do NOT recompute `ref` inside the logp function.
     """
     struct RefinementMap
         needs_refine::BitMatrix
@@ -98,13 +115,11 @@ module LensAdaptiveGrid
                              n_refined, Float64(threshold))
     end
 
-    # ── Info ───────────────────────────────────────────────────────
-
     """
-        info = adaptive_grid_info(ref::RefinementMap, grid)
+        adaptive_grid_info(ref::RefinementMap, grid)
 
     Print a summary of the refinement map: total pixels, refined count,
-    fraction, threshold.
+    fraction, threshold, and estimated ray overhead.
     """
     function adaptive_grid_info(ref::RefinementMap, grid)
         total = length(ref.needs_refine)
@@ -118,4 +133,132 @@ module LensAdaptiveGrid
         println("  overhead: $(round(n_rays/total*100 - 100, digits=1))%")
     end
 
-end
+
+    # ═══════════════════════════════════════════════════════════════
+    #  PART 2: Adaptive rendering
+    # ═══════════════════════════════════════════════════════════════
+
+    """
+        model = render_adaptive(sys::ForwardModel, ref::RefinementMap)
+
+    Render with adaptive sub-sampling.
+
+    Pixels flagged by `ref.needs_refine` are ray-traced at `sub_n²`
+    sub-positions and averaged; all other pixels use a single ray
+    (identical to `LensSystem.render`).
+
+    `ref` should be computed once before MCMC with a fiducial lens
+    model and a conservative `threshold`.
+
+    # Example
+    ```julia
+    ref = RefinementMap(grid, fiducial_lens; threshold=0.3, sub_n=4)
+    model = render_adaptive(sys, ref)
+    ```
+    """
+    function render_adaptive(sys::ForwardModel, ref::RefinementMap)
+        return _render_adaptive(sys, sys.source_plane, ref)
+    end
+
+
+    # ── Source-plane dispatchers ──────────────────────────────────
+
+    function _render_adaptive(sys::ForwardModel, lp::LightPlane,
+                               ref::RefinementMap)
+        return _render_adaptive_light(sys, lp.light, lp.z, ref)
+    end
+
+    function _render_adaptive(sys::ForwardModel, mlp::MultiLightPlane,
+                               ref::RefinementMap)
+        result = nothing
+        for (light, z) in mlp.planes
+            c = _render_adaptive_light(sys, light, z, ref)
+            result = result === nothing ? c : result .+ c
+        end
+        return result
+    end
+
+
+    # ── ExtendedSource: adaptive sub-sampling ※ the main workhorse ──
+
+    function _render_adaptive_light(sys::ForwardModel, src::ExtendedSource,
+                                     z_src, ref::RefinementMap)
+        xg, yg = sys.grid.xg, sys.grid.yg
+        pix_size = Float64(sys.grid.pix_size)
+        T = eltype(xg)
+
+        # Step 1: single-ray base image (same as current render, GPU broadcast)
+        ax, ay = lens_derivative(sys.lens_plane, xg, yg; z_source=z_src)
+        result = evaluate_source(src, xg .- ax, yg .- ay)
+
+        # Step 2: overwrite refined pixels with sub-pixel average
+        offsets = ref.offsets    # (sub_n², 2)
+        weights = ref.weights    # (sub_n²,)
+        n_sub   = size(offsets, 1)
+
+        @inbounds for j in axes(xg, 2), i in axes(xg, 1)
+            ref.needs_refine[i, j] || continue
+
+            x_c = xg[i, j]
+            y_c = yg[i, j]
+            s = zero(T)
+
+            for k in 1:n_sub
+                dx = T(offsets[k, 1] * pix_size)
+                dy = T(offsets[k, 2] * pix_size)
+                x_sub = x_c + dx
+                y_sub = y_c + dy
+
+                # Single-point lens derivative + source eval
+                ax_s, ay_s = lens_derivative(
+                    sys.lens_plane, [x_sub], [y_sub]; z_source=z_src)
+                bx = x_sub - ax_s[1]
+                by = y_sub - ay_s[1]
+                s += evaluate_source(src, [bx], [by])[1] * T(weights[k])
+            end
+
+            result[i, j] = s
+        end
+
+        # Step 3: PSF convolution (same as current render)
+        return _apply_psf(sys, result)
+    end
+
+
+    # ── PointImage / PointImages: no adaptive needed ──
+    #     render_point! already does 5×5 supersampling via n_sub=5.
+    #     Delegate directly to LensSystem's internal point-source render path.
+
+    function _render_adaptive_light(sys::ForwardModel, pt::PointImage,
+                                     z_src, ::RefinementMap)
+        return LensSystem._render_light(sys, pt, z_src)
+    end
+
+    function _render_adaptive_light(sys::ForwardModel, pi::PointImages,
+                                     z_src, ::RefinementMap)
+        return LensSystem._render_light(sys, pi, z_src)
+    end
+
+    # ── CompositeImage: recurse into components ──
+
+    function _render_adaptive_light(sys::ForwardModel, comp::CompositeImage,
+                                     z_src, ref::RefinementMap)
+        result = nothing
+        for component in comp.sources
+            c = _render_adaptive_light(sys, component, z_src, ref)
+            result = result === nothing ? c : result .+ c
+        end
+        return result
+    end
+
+
+    # ═══════════════════════════════════════════════════════════════
+    #  Helpers
+    # ═══════════════════════════════════════════════════════════════
+
+    # PSF application — mirrors LensSystem._apply_psf (private there)
+    @inline _apply_psf(sys::ForwardModel, result) =
+        sys.psf === nothing ? result :
+        conv_psf(result, sys.psf, sys.grid.pix_size)
+
+end # module LensAdaptiveGrid
