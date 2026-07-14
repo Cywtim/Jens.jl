@@ -458,6 +458,13 @@ module LensGenerator
                          z_source       = nothing,
                          kwargs...)
 
+        Base.depwarn(
+            "`render_lens(src, grid, lens_model)` is deprecated, " *
+            "use `LensSystem.render(sys::ForwardModel)` instead.  " *
+            "Wrap your model+source+grid+PSF in a `ForwardModel` " *
+            "and call `render(sys)`.",
+            :render_lens)
+
         xg, yg = grid.xg, grid.yg
         pixel_scale = grid.pix_size
         ny, nx = size(xg)
@@ -497,6 +504,11 @@ module LensGenerator
     function render_lens(src::ExtendedSource, grid::Grid,
                          lens_model; psf=nothing, z_source=nothing, kwargs...)
 
+        Base.depwarn(
+            "`render_lens(src, grid, lens_model)` is deprecated, " *
+            "use `LensSystem.render(sys::ForwardModel)` instead.",
+            :render_lens)
+
         xg, yg = grid.xg, grid.yg
         pixel_scale = grid.pix_size
 
@@ -524,6 +536,11 @@ module LensGenerator
     """
     function render_lens(src::CompositeImage, grid::Grid,
                          lens_model; kwargs...)
+
+        Base.depwarn(
+            "`render_lens(src, grid, lens_model)` is deprecated, " *
+            "use `LensSystem.render(sys::ForwardModel)` instead.",
+            :render_lens)
 
         xg = grid.xg
         ny, nx = size(xg)
