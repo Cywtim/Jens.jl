@@ -1,3 +1,29 @@
+"""
+    tNFW — Truncated Navarro-Frenk-White
+
+3D density:  ρ(r) = ρ_NFW(r) / (1 + (r/r_t)⁴)
+
+NFW profile with a smooth tidal cutoff at radius r_t, giving finite
+total mass.  Radial deflection and convergence are precomputed on a
+log-spaced grid for GPU-safe linear interpolation at render time.
+
+Asymptotic slopes: ρ ~ r⁻¹ inside Rs, ρ ~ r⁻³ between Rs and r_t,
+ρ ~ r⁻⁷ outside r_t.
+
+# Parameters
+- `Rs`: NFW scale radius [arcsec]
+- `alpha_Rs`: deflection scale at Rs [arcsec]
+- `r_t`: truncation / tidal radius [arcsec]
+- `xcentre`, `ycentre`: centre [arcsec]
+- `n_radial`: number of precomputed radial samples (default 300)
+
+# References
+- Baltz+2009, arXiv:0705.3336 — smooth NFW truncation
+- Minor+2020, arXiv:2011.10629 — subhalo concentration effects
+
+# Example
+    lens = tNFWLens(Rs=10.0, alpha_Rs=0.5, r_t=30.0)
+"""
 # ═══════════════════════════════════════════════════════════════
 #  tNFW — truncated NFW lens model with smooth tidal cutoff
 #

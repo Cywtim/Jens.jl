@@ -1,3 +1,25 @@
+"""
+    NFW — Navarro-Frenk-White
+
+ρ(r) = ρ₀ / [(r/Rs)(1 + r/Rs)²]
+
+The universal CDM halo density profile.  Analytic lensing quantities
+use the Bartelmann (1996) and Wright & Brainerd (2000) closed forms.
+Fully type-generic for GPU compatibility.
+
+# Parameters
+- `Rs`: scale radius [arcsec]
+- `alpha_Rs`: deflection scale at Rs [arcsec]
+- `xcentre`, `ycentre`: lens centre [arcsec]
+
+# References
+- Bartelmann (1996), arXiv:astro-ph/9602053
+- Wright & Brainerd (2000), arXiv:astro-ph/9908213
+- Golse & Kneib (2002), arXiv:astro-ph/0112138
+
+# Example
+    lens = SingleModel(NFW; Rs=5.0, alpha_Rs=0.5)
+"""
 module NFW
     
     # 10.48550/arXiv.astro-ph/9602053 
@@ -172,10 +194,11 @@ module NFW
 
         a_eq1 = one_t / three_t
 
-        # a_gt1: r>1 → clamp sqrt arg ≥0, atan arg fine
+        # a_gt1: r>1 → clamp both sqrt args ≥0
         sq_gt = max(r^2 - one_t, zero_t)
+        at_arg_gt = sqrt(max((r - one_t) / (one_t + r), zero_t))
         a_gt1 = one_t / (r^2 - one_t) *
-                (one_t - two_t / sqrt(sq_gt) * atan(sqrt((r - one_t) / (one_t + r))))
+                (one_t - two_t / sqrt(sq_gt) * atan(at_arg_gt))
 
         return ifelse(eq1, a_eq1, ifelse(lt1, a_lt1, a_gt1))
     end

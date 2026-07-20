@@ -1,3 +1,21 @@
+"""
+    NIEkappa — NIE in major-axis coordinates
+
+Core implementation of the non-singular isothermal ellipsoid in its
+major-axis frame.  Parameters are already in the b/q/φ convention
+(see NIE.jl for the e1/e2 interface).  Use NIE instead unless you
+need major-axis parameters directly.
+
+# Parameters
+- `b`: Einstein radius in major-axis frame [arcsec]
+- `s`: core radius [arcsec]
+- `q`: minor-to-major axis ratio (0 < q ≤ 1)
+- `varphi`: position angle of major axis [rad]
+- `xcentre`, `ycentre`: lens centre [arcsec]
+
+# Reference
+Keeton & Kochanek (1998), arXiv:astro-ph/9705194
+"""
 module NIEkappa
 
     using Jens.LensUtils

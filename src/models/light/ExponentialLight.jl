@@ -1,3 +1,25 @@
+"""
+    ExponentialLight — Exponential Disk
+
+I(R) = I₀ exp(−b R/R_eff)    with b ≈ 1.678
+
+Special case of the Sérsic profile with n=1.  Models galaxy disks
+with an exponential surface brightness falloff.
+
+# Functions
+- `ExponentialSpheric`: circular exponential
+- `ExponentialElliptical`: elliptical exponential
+
+# Parameters
+- `amp`: amplitude / central surface brightness
+- `Rsersic`: scale radius [arcsec]
+- `varphi`: position angle [rad] (elliptical only)
+- `q`: minor-to-major axis ratio (elliptical only)
+- `xcentre`, `ycentre`: centre [arcsec]
+
+# Example
+    I = ExponentialSpheric(x, y; amp=1.0, Rsersic=0.5, xcentre=0, ycentre=0)
+"""
 module ExponentialLight
     # sersic index=1.0
 

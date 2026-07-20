@@ -23,6 +23,7 @@ module LensSystem
     using Jens.LensGenerator: LensedPlane, MultiLensedPlane,
                               LightPlane, MultiLightPlane
     using Jens.LensSolver: solve_images, batch_solve_images
+    using Jens.LensNoise: LensNoise, per_pixel_variance
     import Jens.LensCosmo: time_delay_distance
 
     export ForwardModel, render
@@ -439,6 +440,36 @@ module LensSystem
 
     function masked_logp(sys::ForwardModel, data, σ::Real)
         return masked_logp(sys, data, σ, sys.mask)
+    end
+
+    # ── LensNoise overloads (GaussNoise, PoissNoise, GaussPoissNoise) ──
+    #   Use per_pixel_variance for heteroskedastic weighting.
+    #   Existing scalar-σ API above is preserved unchanged.
+
+    function masked_chi2(sys::ForwardModel, data, noise::LensNoise, mask)
+        model = render(sys)
+        diff² = (data .- model).^2
+        var = per_pixel_variance(model, noise)
+        return sum((diff² .* mask) ./ var)
+    end
+
+    function masked_chi2(sys::ForwardModel, data, noise::LensNoise, ::Nothing)
+        model = render(sys)
+        diff² = (data .- model).^2
+        var = per_pixel_variance(model, noise)
+        return sum(diff² ./ var)
+    end
+
+    function masked_chi2(sys::ForwardModel, data, noise::LensNoise)
+        return masked_chi2(sys, data, noise, sys.mask)
+    end
+
+    function masked_logp(sys::ForwardModel, data, noise::LensNoise, mask)
+        return -masked_chi2(sys, data, noise, mask) / 2
+    end
+
+    function masked_logp(sys::ForwardModel, data, noise::LensNoise)
+        return masked_logp(sys, data, noise, sys.mask)
     end
 
 

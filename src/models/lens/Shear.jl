@@ -1,3 +1,20 @@
+"""
+    Shear — External Shear (γ₁, γ₂)
+
+Constant convergence and shear across the field of view.
+Models the tidal effect of distant mass (galaxies, clusters)
+on a lens system.
+
+Lensing potential:  ψ = ½ γ₁(θ_x² − θ_y²) + γ₂ θ_x θ_y
+
+# Parameters
+- `gamma1`: shear component γ₁ (+,× convention)
+- `gamma2`: shear component γ₂
+- `xcentre`, `ycentre`: centre [arcsec]
+
+# Example
+    lens = SingleModel(Shear; gamma1=0.05, gamma2=-0.02)
+"""
 module Shear
 
     function LensCheck(; gamma1::Real, gamma2::Real, xcentre::Real=0.0, ycentre::Real=0.0)

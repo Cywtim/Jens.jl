@@ -29,7 +29,7 @@ module LensShapelet
     using Jens.LensGenerator: LightPlane, MultiLightPlane
 
     export ShapeletBasis, n_basis
-    export evaluate_basis, build_design, solve_coeffs
+    export evaluate_basis, build_design, build_design!, solve_coeffs
     export shapelet_logp, shapelet_model
     export build_reg_matrix, profile_beta
 
@@ -41,17 +41,18 @@ module LensShapelet
         ShapeletBasis(n_max::Int, beta::Real)
 
     Cartesian shapelet basis up to order `n_max` with scale `beta`
-    (arcsec on the source plane).
+    (arcsec on the source plane).  `beta` is stored as Float32 for
+    GPU compatibility; Float64 inputs are auto-converted.
 
     Total number of basis functions:
         N = (n_max + 1)(n_max + 2) / 2
 
     # Example
-        basis = ShapeletBasis(8, 0.12)   # 45 basis functions, β=0.12"
+        basis = ShapeletBasis(8, 0.12f0)  # 45 basis functions, β=0.12
     """
-    struct ShapeletBasis
+    struct ShapeletBasis{T<:AbstractFloat}
         n_max::Int
-        beta::Float64
+        beta::T
     end
 
     """
@@ -114,11 +115,13 @@ module LensShapelet
     end
 
     # ── Vectorised version (x, y are arrays) ──
-    function shapelet_2d(n1::Int, n2::Int, beta::Float64,
+    function shapelet_2d(n1::Int, n2::Int, beta::Real,
                          x::AbstractArray, y::AbstractArray)
-        xb = x ./ beta
-        yb = y ./ beta
-        norm_inv = 1.0 / sqrt(2.0^(n1 + n2) * pi * factorial(n1) * factorial(n2) * beta^2)
+        T = promote_type(typeof(beta), eltype(x), eltype(y))
+        xb = x ./ T(beta)
+        yb = y ./ T(beta)
+        norm_inv = T(1) / sqrt(T(2)^(n1 + n2) * T(pi) *
+                    factorial(n1) * factorial(n2) * T(beta)^2)
         # Use recurrence for vectorised Hermite
         hx = _hermite_vec(n1, xb)
         hy = _hermite_vec(n2, yb)
@@ -160,7 +163,8 @@ module LensShapelet
     function evaluate_basis(basis::ShapeletBasis, x, y)
         N = n_basis(basis)
         M = length(x)
-        A = Matrix{Float64}(undef, M, N)
+        T = promote_type(typeof(basis.beta), eltype(x), eltype(y))
+        A = Matrix{T}(undef, M, N)
 
         col = 1
         for n in 0:basis.n_max
@@ -179,62 +183,47 @@ module LensShapelet
     # ═══════════════════════════════════════════════════════════════
 
     """
-        A_conv = build_design(sys::ForwardModel, basis::ShapeletBasis,
-                              data, mask; xc_src=0.0, yc_src=0.0)
+        build_design!(A_conv, A_flat, sys::ForwardModel,
+                      basis::ShapeletBasis, data, mask;
+                      xc_src=0.0, yc_src=0.0)
 
-    Full pipeline: ray-trace → translate source centre → evaluate
-    basis → PSF convolve → apply mask.
+    In-place variant of `build_design`.  Writes the PSF-convolved
+    design matrix into the pre-allocated `A_conv` (npix × N) and uses
+    `A_flat` (same size) as scratch space.
 
-    # Keyword arguments
-    - `xc_src`, `yc_src`: source-plane centre of the shapelet basis
-      (arcsec).  The basis is evaluated at `(βx - xc_src, βy - yc_src)`.
-      Default (0, 0).  Pass these as MCMC parameters to fit the
-      source position.
-
-    # Steps
-    1. Ray-trace image-plane pixel centres to source plane
-    2. Shift source-plane coordinates by `(xc_src, yc_src)`
-    3. Build M×N design matrix A (evaluate all basis functions)
-    4. Reshape each column → 2D image → conv_psf → flatten
-    5. Apply mask (keep only masked rows)
+    Essential for GPU MCMC: avoids allocating fresh `CuArray` at every
+    MCMC step, which would otherwise incur 84,000 `cudaMalloc` calls.
 
     # Returns
-    `(A_masked, A_conv_full, mask_idx)` where:
-    - `A_masked` is the (n_masked, N) design matrix for fitting
-    - `A_conv_full` is the full (n_pixels, N) matrix for model rendering
-    - `mask_idx` is the linear indices of masked pixels
-
-    # Performance note
-    Step 4 dominates — N PSF convolutions of full images.
-    For 256² grid + N=45: ~0.5s on CPU.
+    `(A_masked, mask_idx)` where `A_masked` is a **view** into
+    `A_conv`, not a copy.  `mask_idx` is reused across calls.
     """
-    function build_design(sys, basis::ShapeletBasis, data, mask;
-                           xc_src::Real=0.0, yc_src::Real=0.0)
+    function build_design!(A_conv, A_flat, sys, basis::ShapeletBasis,
+                            data, mask; xc_src::Real=0.0, yc_src::Real=0.0)
         xg = sys.grid.xg
         yg = sys.grid.yg
         nx, ny = size(xg)
+        N = n_basis(basis)
 
-        # ── Step 1: ray-trace ──
+        # ── Step 1–2: ray-trace + centre shift ──
         betax, betay = _source_plane(sys, xg, yg)
-
-        # ── Step 2: translate source centre ──
         if xc_src != 0.0 || yc_src != 0.0
-            betax = betax .- Float64(xc_src)
-            betay = betay .- Float64(yc_src)
+            T = eltype(betax)
+            betax = betax .- T(xc_src)
+            betay = betay .- T(yc_src)
         end
 
-        # ── Step 3: evaluate basis ──
-        N = n_basis(basis)
-        npix = nx * ny
-        A_flat = evaluate_basis(basis, vec(betax), vec(betay))  # (npix, N)
+        # ── Step 3: evaluate basis → scratch ──
+        A_tmp = evaluate_basis(basis, vec(betax), vec(betay))
+        A_flat .= A_tmp
 
-        # ── Step 4: PSF convolve each column ──
-        A_conv = Matrix{Float64}(undef, npix, N)
+        # ── Step 4: PSF convolve each column → write into A_conv ──
         psf = sys.psf
-        pix_scale = Float64(sys.grid.pix_size)
+        T = eltype(xg)
+        pix_scale = T(sys.grid.pix_size)
 
         for col in 1:N
-            img_col = reshape(A_flat[:, col], nx, ny)
+            img_col = reshape(view(A_flat, :, col), nx, ny)
             if psf !== nothing
                 img_col = conv_psf(img_col, psf, pix_scale)
             end
@@ -245,12 +234,44 @@ module LensShapelet
         if mask !== nothing
             mask_flat = vec(mask)
             mask_idx = findall(mask_flat)
-            A_masked = A_conv[mask_idx, :]
+            A_masked = view(A_conv, mask_idx, :)
         else
-            mask_idx = collect(1:npix)
+            mask_idx = collect(1:nx * ny)
             A_masked = A_conv
         end
 
+        return A_masked, mask_idx
+    end
+
+    """
+        A_masked, A_conv_full, mask_idx = build_design(
+            sys::ForwardModel, basis::ShapeletBasis,
+            data, mask; xc_src=0.0, yc_src=0.0)
+
+    Full pipeline: ray-trace → translate source centre → evaluate
+    basis → PSF convolve → apply mask.
+
+    Allocates the design matrix internally.  For MCMC with many
+    iterations, prefer `build_design!` with pre-allocated buffers.
+
+    # Returns
+    `(A_masked, A_conv_full, mask_idx)` where:
+    - `A_masked` is the (n_masked, N) design matrix for fitting
+    - `A_conv_full` is the full (n_pixels, N) matrix for rendering
+    - `mask_idx` is the linear indices of masked pixels
+    """
+    function build_design(sys, basis::ShapeletBasis, data, mask;
+                           xc_src::Real=0.0, yc_src::Real=0.0)
+        xg = sys.grid.xg
+        nx, ny = size(xg)
+        npix = nx * ny
+        N = n_basis(basis)
+
+        A_conv = similar(xg, npix, N)
+        A_flat = similar(xg, npix, N)
+
+        A_masked, mask_idx = build_design!(A_conv, A_flat, sys, basis, data, mask;
+                                            xc_src=xc_src, yc_src=yc_src)
         return A_masked, A_conv, mask_idx
     end
 
@@ -326,7 +347,7 @@ module LensShapelet
             # For efficiency: build gradient matrix G of size (2M, N)
             # where rows 1:M are ∂/∂x and rows M+1:2M are ∂/∂y.
             # Then Gamma = G' * G.
-            G = Matrix{Float64}(undef, 2M, N)
+            G = Matrix{typeof(basis.beta)}(undef, 2M, N)
             col = 1
             for n in 0:basis.n_max
                 for n1 in 0:n
@@ -342,7 +363,7 @@ module LensShapelet
 
         elseif kind == :curvature
             # ΓᵀΓ_ij = Σ_k (∂²φ_i/∂x² + ∂²φ_i/∂y²)_k · (∂²φ_j/∂x² + ∂²φ_j/∂y²)_k
-            L = Matrix{Float64}(undef, M, N)
+            L = Matrix{typeof(basis.beta)}(undef, M, N)
             col = 1
             for n in 0:basis.n_max
                 for n1 in 0:n
@@ -500,9 +521,10 @@ module LensShapelet
                           lambda::Real=0.01, regularisation::Symbol=:ridge,
                           reg_matrix=nothing)
         d = data[mask_idx]
-        A_w = A_masked ./ sigma
+        sigma_T = eltype(A_masked)(sigma)
+        A_w = A_masked ./ sigma_T
         M = A_w' * A_w
-        b = A_w' * d
+        b_vec = A_w' * d
 
         # Regularisation
         if regularisation == :none || lambda <= 0
@@ -520,9 +542,23 @@ module LensShapelet
                   "Use :none, :ridge, :gradient, or :curvature.")
         end
 
-        c = M_reg \ b
+        # M_reg is N×N (N = 28~45) — always solve on CPU.
+        # GPU \ on tiny matrices has higher kernel-launch overhead
+        # than the solve itself.  Pull back if on GPU.
+        M_cpu = M_reg isa AbstractArray{<:Any,2} && !(M_reg isa Matrix) ?
+                Array(M_reg) : M_reg
+        b_cpu = b_vec isa AbstractArray{<:Any,2} && !(b_vec isa Matrix) ?
+                Array(b_vec) : b_vec
+        c_cpu = M_cpu \ b_cpu
+
+        # Move c back to A_masked's device.
+        # M_cpu\b_cpu returns Float64; convert to A_masked's eltype.
+        T = eltype(A_masked)
+        c = similar(A_masked, T, size(A_masked, 2))
+        copyto!(c, T.(c_cpu))
+
         model = A_masked * c
-        chi2 = sum(((model .- d) ./ sigma).^2)
+        chi2 = sum(((model .- d) ./ sigma_T).^2)
         return c, chi2
     end
 

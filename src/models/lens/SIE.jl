@@ -1,3 +1,24 @@
+"""
+    SIE — Singular Isothermal Ellipsoid
+
+Surface mass density (major-axis aligned):
+    κ = (θ_E / 2) / √(q θ_x² + θ_y²/q)
+
+Parameters `e1`, `e2` use the complex-ellipticity convention:
+    e = √(e1² + e2²),   q = √((1−e)/(1+e)),   φ = ½·atan2(e2, e1)
+
+# Parameters
+- `theta_E`: circularized Einstein radius [arcsec]
+- `e1`, `e2`: ellipticity components in (+,×) convention
+- `s`: core radius for numerical stability [arcsec] (default 1e-4)
+- `xcentre`, `ycentre`: lens centre [arcsec]
+
+# Reference
+Keeton & Kochanek (1998), arXiv:astro-ph/9705194
+
+# Example
+    lens = SingleModel(SIE; theta_E=1.2, e1=0.1, e2=-0.05)
+"""
 module SIE
 
     using Jens.LensUtils

@@ -1,3 +1,33 @@
+"""
+    MultipoleEPL — Angular Multipole Perturbation (m=3, 4)
+
+Adds azimuthal deviations to an EPL lens following the Oh+2024
+circular multipole convention.  Designed to be paired with EPL
+via CombinedLens.
+
+The perturbation is localized near the Einstein radius with a
+Gaussian envelope:  ψ_m(R,φ) = amp·θ_E·G(R)·cos(m(φ−φ_m))
+
+- m=3: triangular perturbation (from triaxial halo)
+- m=4: boxy (amp<0) or disky (amp>0) perturbation
+
+# Parameters
+- `m`: angular order (3 or 4)
+- `amp`: a_m/a, relative amplitude (±0.005–0.05)
+- `phi_m`: multipole orientation [rad]
+- `theta_E`: Einstein radius of the associated EPL [arcsec]
+- `xcentre`, `ycentre`: centre (should match EPL)
+
+# Reference
+Oh+2024, arXiv:2404.17124 — multipole prior from galaxy isophotes
+Van de Vyvere+2022 (A&A 659, A127) — boxy/disky detectability
+
+# Example
+    lens = CombinedLens(
+        EPL => (theta_E=1.2, gamma=2.0, e1=0.1, e2=0.05),
+        MultipoleEPL => (m=4, amp=0.02, phi_m=0.0, theta_E=1.2),
+    )
+"""
 # ═══════════════════════════════════════════════════════════════
 #  MultipoleEPL — m=3,4 angular multipole perturbation
 #

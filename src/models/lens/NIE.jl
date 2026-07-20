@@ -1,3 +1,22 @@
+"""
+    NIE — Non-singular Isothermal Ellipsoid
+
+Elliptical extension of NIS with a finite core radius.  Uses the
+same (e1, e2) ellipticity convention as SIE.  Internally transforms
+to major-axis coordinates and delegates to NIEkappa.
+
+# Parameters
+- `theta_E`: circularized Einstein radius [arcsec]
+- `s_scale`: core radius [arcsec]
+- `e1`, `e2`: ellipticity components
+- `xcentre`, `ycentre`: lens centre [arcsec]
+
+# Reference
+Keeton & Kochanek (1998), arXiv:astro-ph/9705194
+
+# Example
+    lens = SingleModel(NIE; theta_E=1.2, s_scale=0.1, e1=0.1, e2=0.0)
+"""
 module NIE
 
     include("./NIEkappa.jl")

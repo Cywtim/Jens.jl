@@ -1,3 +1,24 @@
+"""
+    Gaussian — Gaussian Elliptical Lens
+
+Convergence:  κ(R) = κ₀ exp(−(q² x² + y²) / (2σ²))
+
+Placed as a lens mass distribution (not a light source).  Uses
+complex error functions (erf, erfi) for the deflection and shear.
+
+# Parameters
+- `kappa0`: central convergence
+- `q`: axis ratio (minor/major)
+- `sigma`: Gaussian width [arcsec]
+- `varphi`: position angle of major axis [rad]
+- `xcentre`, `ycentre`: lens centre [arcsec]
+
+# Reference
+Shajib et al. (2019), doi:10.1093/mnras/stz1796
+
+# Example
+    lens = SingleModel(Gaussian; kappa0=0.3, q=0.8, sigma=0.5, varphi=0.0)
+"""
 module Gaussian
     #  https://doi.org/10.1093/mnras/stz1796
     #=

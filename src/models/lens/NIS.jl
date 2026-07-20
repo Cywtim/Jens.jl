@@ -1,6 +1,21 @@
+"""
+    NIS — Non-singular Isothermal Sphere
+
+Surface mass density:  κ(θ) = θ_E / (2√(s² + θ²))
+
+Same as SIS but with a finite core radius `s` that removes the
+central singularity.  Reduces to SIS as s → 0.
+
+# Parameters
+- `theta_E`: Einstein radius [arcsec]
+- `s`: core radius [arcsec]
+- `xcentre`, `ycentre`: lens centre [arcsec]
+
+# Example
+    lens = SingleModel(NIS; theta_E=1.2, s=0.1)
+"""
 module NIS
-    
-    
+
     function LensCheck(; theta_E::Real, s::Real, xcentre::Real=0., ycentre::Real=0.)
 
         para = [theta_E, s, xcentre, ycentre]

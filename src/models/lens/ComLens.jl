@@ -1,40 +1,40 @@
+"""
+    ComLens — Combined Lens Builder
+
+Construct modular lens models by summing multiple sub-models.
+Three construction API levels:
+
+1. `CombinedLens(pairs...)` — struct-based, fastest, idiomatic
+   Julia.  Works directly with LensBase functions.
+
+2. `MyLens(pairs...)` — builds a Module via metaprogramming.
+   Parameters are baked into the module at construction.
+
+3. `JitLens(pairs...)` — Module with `ModelName_key` prefixed
+   kwargs for external optimization (PSO, Turing).
+
+All three sum the contributions of LensDerivative, LensHessian,
+and LensPotential/Mass from each sub-model.
+
+# Exports
+- `CombinedLens`: struct-based combined lens
+- `MyLens`: Module-based with baked parameters
+- `JitLens`: Module-based with external parameter names
+- `LensPara`: inspect components of a combined lens
+- `to_module`: convert CombinedLens to a Module
+
+# Example
+    lens = CombinedLens(
+        SIE => (theta_E=1.2, e1=0.1, e2=-0.05, xcentre=0.0, ycentre=0.0),
+        Shear => (gamma1=0.03, gamma2=0.01),
+    )
+"""
 module ComLens
 
+    import Jens.JFloat
     import ...LensBase: AbstractLens, lens_derivative, lens_hessian, lens_potential, lens_check
 
-    # ═══════════════════════════════════════════════════════════════
-    #  ComLens — Combined Lens Model Builder
-    #
-    #  Takes a list of (LensModel, parameters) pairs and returns
-    #  a single Module whose LensDerivative / LensHessian /
-    #  LensPotential sum the contributions of all sub-models.
-    #
-    #  The returned Module is a first-class citizen compatible
-    #  with ALL LensBase functions (LensCaustic, LensFermat,
-    #  LensMagnification, LensCriticalCurve, etc.).
-    #
-    #  USAGE ─────────────────────────────────────────────────
-    #
-    #    my_lens = ComLens.MyLens(
-    #        NFW    => (Rs=1.0, alpha_Rs=0.5,  xcentre=0., ycentre=0.),
-    #        NIEkappa => (b=0.6, s=0.1, q=0.5, varphi=pi/4,
-    #                     xcentre=1.5, ycentre=-1.0),
-    #    )
-    #
-    #    # With LensBase:
-    #    mu = LB.LensMagnification(xg, yg;
-    #        LensModel  = my_lens,
-    #        LensKwargs = Dict{Symbol,Float64}())
-    #
-    #    # For critical curve / caustic, xcentre must be in Dict
-    #    # (LensBase accesses it directly — ComLens ignores it):
-    #    ccx, ccy = LB.LensCaustic(;
-    #        LensModel  = my_lens,
-    #        LensKwargs = Dict{Symbol,Float64}(:xcentre=>0., :ycentre=>0.))
-    #
-    # ═══════════════════════════════════════════════════════════
-
-    export MyLens, LensPara, JitLens
+    export MyLens, LensPara, JitLens, CombinedLens
 
     import ...LensBase: lens_derivative, lens_hessian, lens_potential, lens_check
 
@@ -100,8 +100,8 @@ module ComLens
         # ── LensDerivative ───────────────────────────────────
         Core.eval(mod, quote
             function LensDerivative(x, y; kwargs...)
-                fx = zeros(Float64, size(x))
-                fy = zeros(Float64, size(y))
+                fx = zero(x)
+                fy = zero(y)
                 for (model, params) in __comlens_components__
                     fxi, fyi = model.LensDerivative(x, y; params...)
                     fx .+= fxi
@@ -114,9 +114,9 @@ module ComLens
         # ── LensHessian ──────────────────────────────────────
         Core.eval(mod, quote
             function LensHessian(x, y; kwargs...)
-                fxx = zeros(Float64, size(x))
-                fxy = zeros(Float64, size(x))
-                fyy = zeros(Float64, size(x))
+                fxx = zero(x)
+                fxy = zero(x)
+                fyy = zero(x)
                 for (model, params) in __comlens_components__
                     fxx_i, fxy_i, fyy_i = model.LensHessian(x, y; params...)
                     fxx .+= fxx_i
@@ -130,7 +130,7 @@ module ComLens
         # ── LensPotential / LensMass ─────────────────────────
         Core.eval(mod, quote
             function LensPotential(x, y; kwargs...)
-                psi = zeros(Float64, size(x))
+                psi = zero(x)
                 for (model, params) in __comlens_components__
                     # Resolve: models may have LensPotential or LensMass
                     f = isdefined(model, :LensPotential) ?
@@ -206,8 +206,8 @@ module ComLens
         # ── LensDerivative ───────────────────────────────────
         Core.eval(mod, quote
             function LensDerivative(x, y; kwargs...)
-                fx = zeros(Float64, size(x))
-                fy = zeros(Float64, size(y))
+                fx = zero(x)
+                fy = zero(y)
                 for (model, global_keys, local_keys) in __JitLens_components__
                     d = Dict{Symbol, Float64}()
                     for (gk, lk) in zip(global_keys, local_keys)
@@ -224,9 +224,9 @@ module ComLens
         # ── LensHessian ──────────────────────────────────────
         Core.eval(mod, quote
             function LensHessian(x, y; kwargs...)
-                fxx = zeros(Float64, size(x))
-                fxy = zeros(Float64, size(x))
-                fyy = zeros(Float64, size(x))
+                fxx = zero(x)
+                fxy = zero(x)
+                fyy = zero(x)
                 for (model, global_keys, local_keys) in __JitLens_components__
                     d = Dict{Symbol, Float64}()
                     for (gk, lk) in zip(global_keys, local_keys)
@@ -244,7 +244,7 @@ module ComLens
         # ── LensPotential / LensMass ─────────────────────────
         Core.eval(mod, quote
             function LensPotential(x, y; kwargs...)
-                psi = zeros(Float64, size(x))
+                psi = zero(x)
                 for (model, global_keys, local_keys) in __JitLens_components__
                     d = Dict{Symbol, Float64}()
                     for (gk, lk) in zip(global_keys, local_keys)
@@ -268,28 +268,38 @@ module ComLens
     # ═══════════════════════════════════════════════════════════
 
     """
-        CombinedLens(pairs::Pair...)
+            CombinedLens(pairs::Pair...; T=JFloat)
 
-    Idiomatic struct-based combined lens.  Faster setup than
-    `MyLens` (no Module generation), works with all LensBase
-    functions after the `::Module` constraint was removed.
+        Idiomatic struct-based combined lens.  Faster setup than
+        `MyLens` (no Module generation), works with all LensBase
+        functions.
 
-        cl = ComLens.CombinedLens(
-            NFW => (Rs=1.0, alpha_Rs=0.5, xcentre=0., ycentre=0.),
-            NIEkappa => (b=0.6, s=0.1, q=0.5, varphi=pi/4),
-        )
-        mu = LB.LensMagnification(xg, yg; LensModel=cl, LensKwargs=Dict())
-    """
-    struct CombinedLens{M<:Tuple, P<:Tuple} <: AbstractLens
-        models::M
-        params::P
-    end
+        Parameters are converted to `T` (default `JFloat` = Float32).
+        Pass `T=Float64` for high-precision CPU work.
 
-    function CombinedLens(pairs::Pair{<:Module, <:NamedTuple}...)
-        models = Tuple(first(p) for p in pairs)
-        paramss = Tuple(last(p) for p in pairs)
-        return CombinedLens{typeof(models), typeof(paramss)}(models, paramss)
-    end
+            cl = ComLens.CombinedLens(
+                NFW => (Rs=1.0, alpha_Rs=0.5, xcentre=0., ycentre=0.),
+                NIEkappa => (b=0.6, s=0.1, q=0.5, varphi=pi/4),
+            )
+            cl64 = ComLens.CombinedLens(
+                SIE => (theta_E=1.2, e1=0.1, e2=0.0, xcentre=0., ycentre=0.);
+                T=Float64,
+            )
+        """
+        struct CombinedLens{M<:Tuple, P<:Tuple} <: AbstractLens
+            models::M
+            params::P
+        end
+
+        function CombinedLens(pairs::Pair{<:Module, <:NamedTuple}...;
+                              T::Type{<:AbstractFloat}=JFloat)
+            models = Tuple(first(p) for p in pairs)
+            paramss = Tuple(_to_jfloat(last(p), T) for p in pairs)
+            return CombinedLens{typeof(models), typeof(paramss)}(models, paramss)
+        end
+
+        @inline _to_jfloat(nt::NamedTuple, ::Type{T}) where {T} =
+            NamedTuple{keys(nt)}(Tuple(T(v) for v in values(nt)))
 
     # Helper: element type — match input grid, no promotion
     # Float32 grid + Float64 params → Float32 container.

@@ -1,15 +1,15 @@
 module Jens
 
     # ═══════════════════════════════════════════════════════════════
+    #  Global precision — change this line to switch Float32 ↔ Float64
+    # ═══════════════════════════════════════════════════════════════
+    const JFloat = Float32   # Float32 (GPU-friendly) or Float64 (high-precision)
+
+    # ═══════════════════════════════════════════════════════════════
     #  Core — LensUtils included ONCE, shared by all submodules
     # ═══════════════════════════════════════════════════════════════
     include("core/LensUtils.jl")
     include("core/LensBase.jl")
-
-    # ═══════════════════════════════════════════════════════════════
-    #  I/O
-    # ═══════════════════════════════════════════════════════════════
-    include("io/LensFITS.jl")
 
     # ═══════════════════════════════════════════════════════════════
     #  Utilities
@@ -28,6 +28,12 @@ module Jens
     include("utils/WFC3.jl")
     include("utils/MGE.jl")
     include("utils/LensMask.jl")
+    include("core/LensObservation.jl")   # needs Grid + LensNoise + AbstractPSF
+
+    # ═══════════════════════════════════════════════════════════════
+    #  I/O  (after Observation so LensFITS can produce Observation)
+    # ═══════════════════════════════════════════════════════════════
+    include("io/LensFITS.jl")
 
     # ═══════════════════════════════════════════════════════════════
     #  System
@@ -62,8 +68,8 @@ module Jens
     #  Exports
     # ═══════════════════════════════════════════════════════════════
     export LensUtils, LensBase
+    export LensGenerator, LensCosmo, LensConstants, LensLOS, LensSolver, LensNoise, LensPSF, LensMask, LensObservation, WFC3
     export LensFITS
-    export LensGenerator, LensCosmo, LensConstants, LensLOS, LensSolver, LensNoise, LensPSF, LensMask, WFC3
     export LensSystem
     export LensTimeDelay, image_time_delays
     export LensPointLikelihood, LensAdaptiveGrid, LensShapelet

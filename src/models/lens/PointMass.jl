@@ -1,4 +1,20 @@
 
+"""
+    PointMass — Point Mass Lens
+
+Deflection:  α = θ_E² / |θ|
+
+Models a compact object (star, black hole, planet).  Produces
+two images of any background source.  The magnification diverges
+on the Einstein ring.
+
+# Parameters
+- `theta_E`: Einstein radius [arcsec]
+- `xcentre`, `ycentre`: lens centre [arcsec]
+
+# Example
+    lens = SingleModel(PointMass; theta_E=0.5)
+"""
 module PointMass
 
 

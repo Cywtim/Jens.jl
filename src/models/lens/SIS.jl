@@ -1,3 +1,21 @@
+"""
+    SIS — Singular Isothermal Sphere
+
+Surface mass density:  κ(θ) = θ_E / (2|θ|)
+
+The simplest analytical lens model. Circular symmetry, flat rotation
+curve.  Produces two images for |β| < θ_E, one image otherwise.
+
+# Parameters
+- `theta_E`: Einstein radius [arcsec]
+- `xcentre`, `ycentre`: lens centre [arcsec]
+
+# Reference
+Narayan & Bartelmann (1996), arXiv:astro-ph/9606001
+
+# Example
+    lens = SingleModel(SIS; theta_E=1.2)
+"""
 module SIS
     
     

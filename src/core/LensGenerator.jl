@@ -1,6 +1,7 @@
 module LensGenerator
 
     using Cosmology
+    import ..JFloat
     using Jens.LensUtils
     using Jens.LensUtils: ndgrid
     using Jens.LensPSF
@@ -326,17 +327,18 @@ module LensGenerator
     #  metadata (pix_n, pix_size) alongside the coordinate arrays.
     # ═══════════════════════════════════════════════════════════════
 
-    struct Grid
+    struct Grid{T<:AbstractFloat}
         pix_n::Int
-        pix_size::Float64
-        xg::Matrix{Float64}
-        yg::Matrix{Float64}
+        pix_size::T
+        xg::Matrix{T}
+        yg::Matrix{T}
     end
 
-    function GenGrid(; pix_n::Int=256, pix_size::Float64=0.09)
-        half = div(pix_n, 2) * pix_size
+    function GenGrid(; pix_n::Int=256, pix_size::Real=JFloat(0.09))
+        T = typeof(pix_size)
+        half = T(div(pix_n, 2) * pix_size)
         xg, yg = LensGrid(; xl=half, nx=pix_n + 1)
-        return Grid(pix_n, pix_size, xg, yg)
+        return Grid(pix_n, T(pix_size), xg, yg)
     end
 
     # ═══════════════════════════════════════════════════════════════

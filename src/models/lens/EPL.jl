@@ -1,11 +1,30 @@
+"""
+    EPL — Elliptical Power Law
+
+Surface mass density:  κ ∝ R^{1−γ}  (γ=2 → isothermal)
+
+Extension of SIE to arbitrary radial slope.  Uses hypergeometric
+functions (``_2F_1``) for the complex deflection.  γ=2 recovers SIE,
+γ>2 is steeper than isothermal, γ<2 is shallower.
+
+# Parameters
+- `theta_E`: Einstein radius [arcsec]
+- `gamma`: radial slope parameter (γ=2 is isothermal)
+- `e1`, `e2`: ellipticity components
+- `xcentre`, `ycentre`: lens centre [arcsec]
+
+# Reference
+Tessore & Metcalf (2015), doi:10.1051/0004-6361/201526773
+
+# Example
+    lens = SingleModel(EPL; theta_E=1.2, gamma=2.0, e1=0.1, e2=-0.05)
+"""
 module EPL
 
     using   HypergeometricFunctions
 
     using Jens.LensUtils
 
-
-    # DOI 		https://doi.org/10.1051/0004-6361/201526773 
     function LensCheck(; theta_E::Real, gamma::Real,
          e1::Real, e2::Real, xcentre::Real=0., ycentre::Real=0.)
 

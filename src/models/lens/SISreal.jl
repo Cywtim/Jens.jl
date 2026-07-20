@@ -1,6 +1,19 @@
+"""
+    SISreal — SIS with real-domain derivatives
+
+Identical to SIS physically, but uses strictly real-valued math
+(no complex numbers) with explicit R=0 handling.  Useful for
+environments where complex arithmetic is unavailable.
+
+# Parameters
+- `theta_E`: Einstein radius [arcsec]
+- `xcentre`, `ycentre`: lens centre [arcsec]
+
+# Example
+    lens = SingleModel(SISreal; theta_E=1.2)
+"""
 module SISreal
-    
-    
+
     function LensCheck(; theta_E::Real, xcentre::Real=0., ycentre::Real=0.)
 
         para = [theta_E, xcentre, ycentre]

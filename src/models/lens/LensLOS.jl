@@ -1,3 +1,26 @@
+"""
+    LensLOS — Line-of-Sight Tidal Effects
+
+Models the tidal gravitational effect of structure along the line of
+sight (LOS).  The lens Jacobian is:
+    A_total = T_ext · (I − H_lens)
+
+where T_ext is a 2×2 tidal matrix with convergence κ_ext and shear
+γ₁_ext, γ₂_ext.  Wraps any AbstractLens via WithTidal.
+
+# Exports
+- `ExternalTidal(kappa_ext, gamma1_ext, gamma2_ext)`: LOS tidal matrix
+- `WithTidal(lens, tidal)`: wraps any lens with LOS effects
+- `NO_LOS`: identity (no LOS effect)
+
+# References
+- Schneider (2014), arXiv:1409.0015
+- Fleury et al. (2021), arXiv:2104.08883
+
+# Example
+    tidal = ExternalTidal(kappa_ext=0.05, gamma1_ext=0.02, gamma2_ext=-0.01)
+    lens = WithTidal(SingleModel(SIE; theta_E=1.2, e1=0.1, e2=0.0), tidal)
+"""
 module LensLOS
 
     using Cosmology

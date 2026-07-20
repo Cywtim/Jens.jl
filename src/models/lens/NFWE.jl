@@ -1,3 +1,22 @@
+"""
+    NFWE — Elliptical Navarro-Frenk-White
+
+Elliptical extension of NFW via coordinate distortion.  Wraps NFW.jl:
+replaces circular radius R with an elliptical radius via the
+EllipticalDistortion transform.
+
+# Parameters
+- `Rs`: NFW scale radius [arcsec]
+- `alpha_Rs`: deflection scale at Rs [arcsec]
+- `e1`, `e2`: ellipticity components
+- `xcentre`, `ycentre`: lens centre [arcsec]
+
+# Reference
+Golse & Kneib (2002), arXiv:astro-ph/0112138
+
+# Example
+    lens = SingleModel(NFWE; Rs=5.0, alpha_Rs=0.5, e1=0.15, e2=0.0)
+"""
 module NFWE
 
     include("./NFW.jl")

@@ -1,4 +1,24 @@
 
+"""
+    GaussianLight — Gaussian Profile
+
+I(R) = A/(2πσ²) exp(−R²/(2σ²))
+
+Simple spherical and elliptical Gaussian light sources.
+
+# Functions
+- `GaussianSphere`: circular Gaussian
+- `GaussianEllipse`: elliptical Gaussian with e1, e2
+
+# Parameters
+- `amp`: total flux
+- `sigma`: Gaussian width [arcsec]
+- `e1`, `e2`: ellipticity components (elliptical only)
+- `xcentre`, `ycentre`: centre [arcsec]
+
+# Example
+    I = GaussianSphere(x, y; amp=1.0, sigma=0.5, xcentre=0, ycentre=0)
+"""
 module GaussianLight
 
 

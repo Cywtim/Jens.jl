@@ -1,4 +1,18 @@
 
+"""
+    ShearGammaPsi — External Shear (γ, ψ)
+
+Same as Shear but parameterized by amplitude γ and position angle ψ:
+    γ₁ = γ cos(2ψ),  γ₂ = γ sin(2ψ)
+
+# Parameters
+- `gamma`: shear amplitude
+- `psi`: position angle [rad]
+- `xcentre`, `ycentre`: centre [arcsec]
+
+# Example
+    lens = SingleModel(ShearGammaPsi; gamma=0.05, psi=0.3)
+"""
 module ShearGamma
 
     function LensCheck(; gamma::Real, psi::Real, xcentre::Real=0.0, ycentre::Real=0.0)

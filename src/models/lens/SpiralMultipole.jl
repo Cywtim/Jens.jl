@@ -1,22 +1,31 @@
-module SpiralMultipole
+"""
+    SpiralMultipole — Density-Wave Spiral Perturbation
 
-    # ═══════════════════════════════════════════════════════════════
-    #  SpiralMultipoleLens — density-wave multipole expansion lens
-    #
-    #  κ(R,φ) = κ₀(R) + Σₘ Aₘ(R) cos(mφ - f(R))
-    #
-    #  The m=0 term is provided by MGECombinedLens (circular Gaussians).
-    #  The m>0 terms are density-wave perturbations, localized in a
-    #  Gaussian annulus around the corotation radius R_cr.
-    #
-    #  The radial part ψₘ(R) is computed via the 2D Poisson Green
-    #  function and precomputed on a radial grid for interpolation
-    #  during ray tracing.
-    #
-    #  Refs:
-    #    Lin & Shu (1964) — density wave theory
-    #    Shajib (2019) MNRAS 488, 1387 — MGE for lensing
-    # ═══════════════════════════════════════════════════════════════
+Convergence:  κ(R,φ) = κ₀(R) + Σₘ Aₘ(R) cos(mφ − f(R))
+
+Density-wave theory applied to lens galaxies.  The m=0 term is
+provided by a smooth MGE lens; the m≥2 terms are localized in a
+Gaussian annulus around the corotation radius R_cr.  The radial
+Green function is precomputed for GPU-safe interpolation.
+
+# Parameters
+- `m0_lens::MGECombinedLens`: axisymmetric (m=0) smooth component
+- `m::Int`: angular mode number (2 = bisymmetric spiral)
+- `amplitude`: peak amplitude A₀ of the density-wave perturbation
+- `R_cr`: corotation radius [arcsec]
+- `delta_R`: Gaussian width of the radial annulus [arcsec]
+- `pitch_angle`: pitch angle i_p [rad]
+- `R0`: reference radius for logarithmic spiral phase [arcsec]
+
+# References
+- Lin & Shu (1964) — density wave theory
+- Shajib (2019), MNRAS 488, 1387 — MGE for lensing
+
+# Example
+    m0 = MGECombinedLens(...)
+    lens = SpiralMultipoleLens(m0, 2, 0.05, 1.0, 0.3, 0.2, 1.0)
+"""
+module SpiralMultipole
 
     using SpecialFunctions
     using LinearAlgebra
@@ -74,8 +83,6 @@ module SpiralMultipole
             @assert R_cr > 0 "R_cr must be positive"
             @assert delta_R > 0 "delta_R must be positive"
 
-            # -- build radial grid for Green function precomputation --
-            # Green-function integrals need Float64 precision; computed once at construction.
             R_grid = _build_radial_grid(Float64(R_cr), Float64(delta_R); n=n_radial)
             psi_m_grid, dpsim_dR_grid = _precompute_green(
                 m, Float64(amplitude), Float64(R_cr), Float64(delta_R), R_grid)
@@ -109,7 +116,6 @@ module SpiralMultipole
     end
 
     function _build_radial_grid(R_cr::Float64, delta_R::Float64; n::Int=200)
-        # Cover [0.01·R_cr, R_cr + 5·delta_R] with dense sampling near R_cr
         R_min = max(1e-4 * R_cr, 0.01 * R_cr)
         R_max = R_cr + 6.0 * delta_R
         return exp10.(range(log10(R_min), log10(R_max); length=n))
@@ -121,14 +127,10 @@ module SpiralMultipole
         psi = zeros(n_r)
         dpsi = zeros(n_r)
 
-        # Use quadrature on a finer grid for the two integrals
         n_fine = 2000
         s_fine = exp10.(range(log10(R_grid[1]), log10(R_grid[end]); length=n_fine))
         kappa_fine = [_kappa_density_wave(s, A0, R_cr, delta_R) for s in s_fine]
 
-        # Precompute cumulative integrals via trapezoidal rule
-        # I₁(R) = ∫₀ᴿ sᵐ⁺¹ κ(s) ds
-        # I₂(R) = ∫_R^∞ s¹⁻ᵐ κ(s) ds
         integrand_1 = [s^(m+1) * _kappa_density_wave(s, A0, R_cr, delta_R) for s in s_fine]
         integrand_2 = [s^(1-m) * _kappa_density_wave(s, A0, R_cr, delta_R) for s in s_fine]
 
@@ -144,7 +146,6 @@ module SpiralMultipole
         end
 
         for (j, R) in enumerate(R_grid)
-            # Find nearest index in fine grid
             idx = searchsortedfirst(s_fine, R)
             idx = clamp(idx, 1, n_fine - 1)
             I1 = I1_cum[idx]
@@ -154,7 +155,6 @@ module SpiralMultipole
             dpsi[j] = -R^(-m-1) * I1 + R^(m-1) * I2
         end
 
-        # Handle R → 0 limit
         psi[1] = 0.0
         dpsi[1] = 0.0
 
@@ -176,10 +176,6 @@ module SpiralMultipole
 
     # ═══════════════════════════════════════════════════════════════
     #  Vectorized linear interpolation — GPU-safe via broadcast bins
-    #
-    #  Given sorted R_grid and precomputed values, interpolate every
-    #  element of R.  O(n_bins × n_pixels) but pure broadcast →
-    #  native GPU kernel with zero scalar indexing.
     # ═══════════════════════════════════════════════════════════════
 
     function _interp1_vec(R::AbstractArray, R_grid::AbstractVector, vals::AbstractVector)
@@ -188,7 +184,6 @@ module SpiralMultipole
         result .= convert(T, NaN)
         n_bins = length(R_grid) - 1
 
-        # Interior bins — broadcast per bin, mask-based ifelse
         for i in 1:n_bins
             lo = convert(T, R_grid[i])
             hi = convert(T, R_grid[i+1])
@@ -199,7 +194,6 @@ module SpiralMultipole
             result = @. ifelse(in_bin, vlo + t * (vhi - vlo), result)
         end
 
-        # Boundary extrapolation
         vfirst = convert(T, vals[1])
         vlast  = convert(T, vals[end])
         result = @. ifelse(R < R_grid[1],   vfirst, result)
@@ -266,26 +260,19 @@ module SpiralMultipole
     # ═══════════════════════════════════════════════════════════════
 
     function lens_derivative(lens::SpiralMultipoleLens, x, y; kwargs...)
-        # 1. m=0 component from MGE
         ax, ay = lens_derivative(lens.m0_lens, x, y)
-
-        # 2. Add multipole perturbation
         _multipole_deflection!(ax, ay, x, y, lens)
-
         return ax, ay
     end
 
     function lens_hessian(lens::SpiralMultipoleLens, x, y; kwargs...)
-        # 1. m=0 component from MGE
         fxx0, fxy0, fyy0 = lens_hessian(lens.m0_lens, x, y)
 
-        # 2. Analytic multipole Hessian
         m = lens.m
         T_scalar = promote_type(eltype(x), Float32)
         i_p = convert(T_scalar, lens.pitch_angle)
         R0  = convert(T_scalar, lens.R0)
 
-        # Precompute d²ψₘ/dR² grid (once, not in the hot loop)
         d2psi_grid = _second_deriv(lens.R_grid, lens.dpsim_dR_grid)
 
         R = @. sqrt(x^2 + y^2)
@@ -308,7 +295,6 @@ module SpiralMultipole
         cos_arg = @. cos(m * phi - f_R)
         sin_arg = @. sin(m * phi - f_R)
 
-        # ∂²ψ/∂R², ∂²ψ/∂R∂φ, ∂²ψ/∂φ² for the m-th mode
         psi_RR = @. (d2psi_m * cos_arg
                       + 2 * dpsi_m * sin_arg * fprime
                       + psi_m * cos_arg * fprime^2
@@ -321,7 +307,6 @@ module SpiralMultipole
 
         alpha_R_term = @. dpsi_m * cos_arg + psi_m * sin_arg * fprime
 
-        # Convert to Cartesian Hessian
         f_xx_pert = @. (psi_RR * cos_phi^2
                          - 2 * psi_Rphi * sin_phi * cos_phi / R_safe
                          + psi_phiphi * sin_phi^2 / R_safe^2
@@ -343,7 +328,6 @@ module SpiralMultipole
         return fxx, fxy, fyy
     end
 
-    # Helper: second derivative via finite differences on the precomputed grid
     function _second_deriv(R_grid::AbstractVector, dpsi_grid::AbstractVector)
         d2 = similar(dpsi_grid)
         d2[1] = zero(eltype(d2))

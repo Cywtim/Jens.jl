@@ -1,3 +1,31 @@
+"""
+    SersicLight — Sérsic Profile
+
+I(R) = I₀ exp[−b_n (R/R_eff)^{1/n}]
+
+The most commonly used galaxy surface brightness profile.
+Spherical and elliptical variants.  n=1 recovers the exponential
+disk, n=4 is the de Vaucouleurs profile.
+
+# Functions
+- `SersicSpheric`: spherical Sérsic
+- `SersicElliptical`: elliptical Sérsic with q, φ
+
+# Parameters
+- `amp`: amplitude / central surface brightness
+- `Rsersic`: effective (half-light) radius [arcsec]
+- `n`: Sérsic index
+- `varphi`: position angle [rad] (elliptical only)
+- `q`: minor-to-major axis ratio (elliptical only)
+- `xcentre`, `ycentre`: centre [arcsec]
+
+# References
+- Ciotti & Bertin (1999), arXiv:astro-ph/9911078
+- Graham & Driver (2005), arXiv:astro-ph/0503176
+
+# Example
+    I = SersicSpheric(x, y; amp=1.0, Rsersic=0.5, n=2.0, xcentre=0, ycentre=0)
+"""
 module SersicLight
     # https://arxiv.org/pdf/1009.4713
     # https://arxiv.org/pdf/2306.05454

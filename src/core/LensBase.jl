@@ -1,6 +1,7 @@
 module LensBase
 
     using AstroLib, NLsolve, Optim
+    import ..JFloat
 
     using Jens.LensUtils
 
@@ -106,17 +107,20 @@ module LensBase
     end
 
     """
-        SingleModel(model::Module; kwargs...) → SingleModel
+        SingleModel(model::Module; T=JFloat, kwargs...) → SingleModel
 
     Wrap a lens model Module with baked parameters.
     Equivalent to `CombinedLens` for a single model — no LensKwargs required.
 
+    Parameters are converted to `T` (default `JFloat` = Float32).
+    Pass `T=Float64` for high-precision CPU work.
+
         sm = LensBase.SingleModel(SIE; theta_E=1.0, e1=0.3, e2=0.2, xcentre=0., ycentre=0.)
-        mu = LB.LensMagnification(xg, yg; LensModel=sm)
+        sm64 = LensBase.SingleModel(SIE; T=Float64, theta_E=1.0, e1=0.3)
     """
-    function SingleModel(model::Module; kwargs...)
+    function SingleModel(model::Module; T::Type{<:AbstractFloat}=JFloat, kwargs...)
         _assert_lensmodel(model)
-        nt = (; (Symbol(k) => Float64(v) for (k, v) in kwargs)...)
+        nt = (; (Symbol(k) => T(v) for (k, v) in kwargs)...)
         return SingleModel{typeof(model), typeof(nt)}(model, nt)
     end
 

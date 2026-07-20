@@ -1,20 +1,28 @@
-module PseudoJaffe
+"""
+    PseudoJaffe — Tidally Truncated Subhalo
 
-    # ═══════════════════════════════════════════════════════════════
-    #  PseudoJaffe — tidally truncated subhalo lens model
-    #
-    #  3D density:  ρ(r) ∝ 1 / (r² (r² + r_t²))
-    #
-    #  Parameters:
-    #    theta_E  — Einstein radius (SIS limit as r_t → ∞)  [arcsec]
-    #    r_t      — tidal / truncation radius                [arcsec]
-    #    xcentre, ycentre — center position                  [arcsec]
-    #
-    #  Refs:
-    #    Muñoz+2001 (ApJ 546, 769)  — pseudo-Jaffe derivation
-    #    Minor+2016 (1612.05250)    — subhalo perturbation scale
-    #    Vegetti+2023 (2306.11781)  — subhalo lensing review
-    # ═══════════════════════════════════════════════════════════════
+3D density:  ρ(r) ∝ 1 / (r² (r² + r_t²))
+
+Convergence:  κ(R) = (θ_E/2)·[1/R − 1/√(R² + r_t²)]
+
+A physically motivated subhalo model with finite total mass.
+Used extensively for dark-matter substructure detection in
+strong lensing.  Reduces to SIS as r_t → ∞.
+
+# Parameters
+- `theta_E`: Einstein radius (SIS limit as r_t → ∞) [arcsec]
+- `r_t`: tidal / truncation radius [arcsec]
+- `xcentre`, `ycentre`: centre [arcsec]
+
+# References
+- Muñoz+2001 (ApJ 546, 769) — pseudo-Jaffe derivation
+- Minor+2016, arXiv:1612.05250 — subhalo perturbation scale
+- Vegetti+2023, arXiv:2306.11781 — subhalo lensing review
+
+# Example
+    lens = SingleModel(PseudoJaffe; theta_E=0.1, r_t=0.5)
+"""
+module PseudoJaffe
 
     export LensCheck, LensPotential, LensDerivative, LensHessian
 
