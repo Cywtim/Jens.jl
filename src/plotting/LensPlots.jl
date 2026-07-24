@@ -92,15 +92,37 @@ export LensCanvas
     #  2.   Draw on canvas
     # ═══════════════════════════════════════════════════════════════
 
+    _scale_label(scale::Symbol) = scale == :linear ? "" : " ($(scale))"
+
+    function _apply_scale(image::AbstractArray, scale::Symbol)
+        if scale == :linear
+            return image
+        elseif scale == :log
+            min_val = minimum(image)
+            offset  = max(0.0f0, -min_val) + 1f-30
+            return log10.(image .+ offset)
+        elseif scale == :sqrt
+            min_val = minimum(image)
+            offset  = max(0.0f0, -min_val)
+            return sqrt.(max.(image .+ offset, 0.0f0))
+        else
+            error("Unknown scale=:$scale. Use :linear, :log, or :sqrt.")
+        end
+    end
+
     """
-        PlotPlane!(canvas, xg, yg, image; colormap, clim, colorbar, kwargs...)
+        PlotPlane!(canvas, xg, yg, image; scale, colormap, clim, colorbar, kwargs...)
 
     Draw a lens-plane image as a heatmap onto an existing `canvas`.
+
+    # Keyword arguments
+    - `scale::Symbol = :linear`  — `:linear`, `:log` (log₁₀), or `:sqrt`
     """
     function PlotPlane!(
             canvas,
             xg::AbstractArray, yg::AbstractArray,
             image::AbstractArray;
+            scale::Symbol  = :linear,
             colormap = :dense,
             clim::Union{Tuple,Nothing}  = nothing,
             colorbar::Bool = true,
@@ -108,17 +130,22 @@ export LensCanvas
         )
         xvec = xg[:, 1]
         yvec = yg[1, :]
-        clim_val = clim === nothing ? extrema(image) : clim
 
-        heatmap!(canvas, xvec, yvec, image';
-                 c = colormap,
-                 clim = clim_val,
-                 colorbar = colorbar,
+        display_image = _apply_scale(image, scale)'
+        clim_val      = clim === nothing ? extrema(display_image) : clim
+
+        colorbar_title = colorbar ? _scale_label(scale) : ""
+
+        heatmap!(canvas, xvec, yvec, display_image;
+                 c               = colormap,
+                 clim            = clim_val,
+                 colorbar        = colorbar,
+                 colorbar_title  = colorbar_title,
                  kwargs...)
     end
 
     """
-        PlotPlane!(canvas, image; pixel_scale, x0, y0, colormap, clim, colorbar, kwargs...)
+        PlotPlane!(canvas, image; scale, pixel_scale, x0, y0, colormap, clim, colorbar, kwargs...)
 
     Draw an image matrix directly onto `canvas`, using pixel indices
     scaled by `pixel_scale` and offset by `(x0, y0)`.
@@ -126,16 +153,23 @@ export LensCanvas
     No grid arrays required — useful for pre-computed images, PSF-convolved
     outputs, or any matrix that already lives on a regular pixel grid.
 
+    # Keyword arguments
+    - `scale::Symbol = :linear`  — `:linear`, `:log` (log₁₀), or `:sqrt`
+
     **Example**
         # 51×51 image at WFC3 pixel scale, centred at (0,0)
         PlotPlane!(canvas, my_image; pixel_scale=0.04)
 
         # Pixel indices as coordinates (pixel_scale=1, origin at centre)
         PlotPlane!(canvas, my_image)
+
+        # Log-scale to reveal faint structure
+        PlotPlane!(canvas, my_image; scale=:log, pixel_scale=0.04)
     """
     function PlotPlane!(
             canvas,
             image::AbstractMatrix;
+            scale::Symbol  = :linear,
             pixel_scale::Real = 1.0,
             x0::Real = 0.0,
             y0::Real = 0.0,
@@ -150,12 +184,16 @@ export LensCanvas
         xvec = range(x0 - half_x, x0 + half_x; length=nx)
         yvec = range(y0 - half_y, y0 + half_y; length=ny)
 
-        clim_val = clim === nothing ? extrema(image) : clim
+        display_image = _apply_scale(image, scale)
+        clim_val      = clim === nothing ? extrema(display_image) : clim
 
-        heatmap!(canvas, collect(xvec), collect(yvec), image;
-                 c        = colormap,
-                 clim     = clim_val,
-                 colorbar = colorbar,
+        colorbar_title = colorbar ? _scale_label(scale) : ""
+
+        heatmap!(canvas, collect(xvec), collect(yvec), display_image;
+                 c               = colormap,
+                 clim            = clim_val,
+                 colorbar        = colorbar,
+                 colorbar_title  = colorbar_title,
                  kwargs...)
     end
 
