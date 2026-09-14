@@ -12,6 +12,7 @@ module LensModel
     include("Gaussian.jl")
     include("NFWE.jl")
     include("Shear.jl")
+    include("ShearGammaPsi.jl")
     include("SISreal.jl")
     include("PointMass.jl")
     include("ComLens.jl")
@@ -20,5 +21,6 @@ module LensModel
     include("tNFW.jl")
     include("SubhaloPopulation.jl")
     include("MultipoleEPL.jl")
+    include("dPIE.jl")
 
 end

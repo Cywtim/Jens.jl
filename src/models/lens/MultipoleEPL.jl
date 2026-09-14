@@ -160,8 +160,8 @@ module MultipoleEPL
                              xcentre::Real=0., ycentre::Real=0.)
         m_int = Int(m)
         T = eltype(x)
-        ax = zeros(T, size(x))
-        ay = zeros(T, size(y))
+        ax = similar(x, T); ax .= zero(T)
+        ay = similar(y, T); ay .= zero(T)
         _multipole_deflection!(ax, ay, x, y, m_int, amp, phi_m,
                                theta_E, xcentre, ycentre)
         return ax, ay

@@ -31,12 +31,13 @@ module PointMass
 
     function LensPotential(xg::AbstractArray, yg::AbstractArray;
         theta_E=.5, xcentre=0., ycentre=0.)
+        T = eltype(xg)
 
         xsh = xg .- xcentre
         ysh = yg .- ycentre
 
         a = @. sqrt(xsh^2 + ysh^2)
-        a = @. max(10^(-20), a)
+        a = @. max(T(1e-20), a)
 
         
         f = @. theta_E^2 * log(a)
@@ -46,12 +47,13 @@ module PointMass
 
     function  LensDerivative(xg::AbstractArray, yg::AbstractArray;
         theta_E=1.5, xcentre=0., ycentre=0.)
+        T = eltype(xg)
 
         xsh = xg .- xcentre
         ysh = yg .- ycentre
 
         a = @. sqrt(xsh^2 + ysh^2)
-        a = @. max(10^(-20), a)
+        a = @. max(T(1e-20), a)
         
         alpha = @. theta_E^2 / a
         f_x = @. alpha * xsh / a
@@ -63,12 +65,13 @@ module PointMass
 
     function LensHessian(xg::AbstractArray, yg::AbstractArray;
           theta_E::Real=1.5, xcentre::Real=0., ycentre::Real=0., diff::Real= 1e-10)
+          T = eltype(xg)
 
           xsh = xg .- xcentre
           ysh = yg .- ycentre
   
           a = @. sqrt(xsh^2 + ysh^2)
-          a = @. max(10^(-20), a)
+          a = @. max(T(1e-20), a)
 
           f_xx = @. theta_E^2 * (ysh^2 - xsh^2) / a^4
           f_yy = @. theta_E^2 * (xsh^2 - ysh^2) / a^4

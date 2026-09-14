@@ -70,13 +70,14 @@ module LensPSF
         kh     = K ÷ 2
         kc     = (K + 1) ÷ 2
         result = zeros(T, M, N)
+        kT = T.(kernel)  # promote kernel to image precision
 
         @inbounds for j in 1:N, i in 1:M
             s = zero(T)
             for dj in -kh:kh, di in -kh:kh
                 ii = clamp(i + di, 1, M)
                 jj = clamp(j + dj, 1, N)
-                s += image[ii, jj] * kernel[kc + di, kc + dj]
+                s += image[ii, jj] * kT[kc + di, kc + dj]
             end
             result[i, j] = s
         end

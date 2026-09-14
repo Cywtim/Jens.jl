@@ -18,7 +18,7 @@ module LensObservation
     using Jens.LensNoise: LensNoise, GaussNoise, PoissNoise
     using Jens.LensPSF: AbstractPSF
 
-    export Observation
+    export Observation, with_psf, with_noise, with_mask
     export pixel_scale, filter_name, telescope, instrument
     export photflam, photplam, photfnu, pivot_wavelength
     export sky_to_pixel, pixel_to_sky
@@ -28,17 +28,22 @@ module LensObservation
     # ═══════════════════════════════════════════════════════════════
 
     """
-        Observation{T}(; data, grid, noise, mask, psf, exposure_time, header)
+        Observation{T,N,P}(; data, grid, noise, mask, psf, ...)
 
     Complete observation container bridging raw telescope data and
     the `ForwardModel` fitting pipeline.
 
+    # Type parameters
+    - `T<:AbstractFloat`: element type of `data` and `grid` (e.g. `Float32`)
+    - `N<:LensNoise`: concrete noise model type (e.g. `GaussNoise{Float32}`)
+    - `P`: concrete PSF type, or `Nothing` when no PSF is attached
+
     # Fields
     - `data::Matrix{T}`          : observed pixel values (e⁻/s or ADU/s)
     - `grid::Grid{T}`            : coordinate grid (contains pix_size, xg, yg)
-    - `noise::LensNoise`         : noise model (`GaussNoise` or `PoissNoise`)
+    - `noise::N`                 : noise model (`GaussNoise` or `PoissNoise`)
     - `mask::BitMatrix`          : `true` = include pixel in χ²
-    - `psf::Union{AbstractPSF, Nothing}` : PSF model (`nothing` = no convolution)
+    - `psf::P`                   : PSF model (`nothing` = no convolution)
     - `exposure_time::Float64`   : exposure time [seconds]
     - `header::Dict{String, Any}`: full FITS header for metadata access
     - `target::String`           : label for this extraction (\"full\", \"roi\", custom)
@@ -66,12 +71,12 @@ module LensObservation
     logp = masked_logp(sys, obs.data, obs.noise.σ, obs.mask)
     ```
     """
-    struct Observation{T<:AbstractFloat}
+    struct Observation{T<:AbstractFloat, N<:LensNoise, P}
         data::Matrix{T}
         grid::Grid{T}
-        noise::LensNoise
+        noise::N
         mask::BitMatrix
-        psf::Union{AbstractPSF, Nothing}
+        psf::P
         exposure_time::Float64
         header::Dict{String, Any}
         target::String
@@ -80,19 +85,19 @@ module LensObservation
         source_path::String                      # original FITS file path ("" if mock)
 
         # Inner constructor with validation
-        function Observation{T}(;
+        function Observation{T,N,P}(;
             data::Matrix{T},
             grid::Grid{T},
-            noise::LensNoise,
+            noise::N,
             mask::BitMatrix,
-            psf::Union{AbstractPSF, Nothing}=nothing,
+            psf::P=nothing,
             exposure_time::Real=0.0,
             header::Dict{String, Any}=Dict{String, Any}(),
             target::String="full",
             center::Union{Tuple{Int,Int}, Nothing}=nothing,
             radius::Union{Int, Nothing}=nothing,
             source_path::String="",
-        ) where {T<:AbstractFloat}
+        ) where {T<:AbstractFloat, N<:LensNoise, P}
             # Validate data-mask shapes match
             size(data) == size(mask) || throw(ArgumentError(
                 "data size $(size(data)) ≠ mask size $(size(mask))"))
@@ -101,19 +106,19 @@ module LensObservation
             if size(data, 1) != grid_pix || size(data, 2) != grid_pix
                 @warn "data size $(size(data)) ≠ grid size ($(grid_pix), $(grid_pix))"
             end
-            return new{T}(data, grid, noise, mask, psf,
+            return new{T,N,P}(data, grid, noise, mask, psf,
                           Float64(exposure_time), header, target,
                           center, radius, source_path)
         end
     end
 
-    # Convenience outer constructor: infer T from data eltype
+    # Convenience outer constructor: infer T, N, P from arguments
     function Observation(;
         data::Matrix{T},
         grid::Grid,
         noise::LensNoise,
         mask::BitMatrix,
-        psf::Union{AbstractPSF, Nothing}=nothing,
+        psf=nothing,
         exposure_time::Real=0.0,
         header::Dict{String, Any}=Dict{String, Any}(),
         target::String="full",
@@ -121,7 +126,7 @@ module LensObservation
         radius::Union{Int, Nothing}=nothing,
         source_path::String="",
     ) where {T<:AbstractFloat}
-        return Observation{T}(;
+        return Observation{T, typeof(noise), typeof(psf)}(;
             data=data, grid=grid, noise=noise, mask=mask,
             psf=psf, exposure_time=exposure_time, header=header,
             target=target, center=center, radius=radius,
@@ -296,7 +301,63 @@ module LensObservation
     end
 
     # ═══════════════════════════════════════════════════════════════
-    #  Convenience: build a quck all-true Observation for testing
+    #  Immutable update helpers — return a new Observation with one
+    #  field replaced.  Avoids manual reconstruction when attaching
+    #  a PSF, swapping the noise model, or updating the mask.
+    # ═══════════════════════════════════════════════════════════════
+
+    """
+        obs′ = with_psf(obs, psf)
+
+    Return a new `Observation` with `psf` attached, copying all other
+    fields from `obs`.  Since `Observation` is immutable, this is the
+    idiomatic way to add a PSF after `read_fits`.
+
+    # Example
+    ```julia
+    obs = read_fits("data.fits")             # psf = nothing
+    obs = with_psf(obs, WFC3_UVIS_PSF())     # now obs.psf is set
+    ```
+    """
+    function with_psf(obs::Observation{T,N}, psf) where {T,N}
+        return Observation{T, N, typeof(psf)}(;
+            data=obs.data, grid=obs.grid, noise=obs.noise, mask=obs.mask,
+            psf=psf, exposure_time=obs.exposure_time, header=obs.header,
+            target=obs.target, center=obs.center, radius=obs.radius,
+            source_path=obs.source_path)
+    end
+
+    """
+        obs′ = with_noise(obs, noise)
+
+    Return a new `Observation` with `noise` replaced.
+    """
+    function with_noise(obs::Observation{T}, noise::LensNoise) where {T}
+        return Observation{T, typeof(noise), typeof(obs.psf)}(;
+            data=obs.data, grid=obs.grid, noise=noise, mask=obs.mask,
+            psf=obs.psf, exposure_time=obs.exposure_time, header=obs.header,
+            target=obs.target, center=obs.center, radius=obs.radius,
+            source_path=obs.source_path)
+    end
+
+    """
+        obs′ = with_mask(obs, mask)
+
+    Return a new `Observation` with `mask` replaced.  The new mask
+    must have the same shape as `obs.data`.
+    """
+    function with_mask(obs::Observation{T,N,P}, mask::BitMatrix) where {T,N,P}
+        size(mask) == size(obs.data) || throw(ArgumentError(
+            "mask size $(size(mask)) ≠ data size $(size(obs.data))"))
+        return Observation{T,N,P}(;
+            data=obs.data, grid=obs.grid, noise=obs.noise, mask=mask,
+            psf=obs.psf, exposure_time=obs.exposure_time, header=obs.header,
+            target=obs.target, center=obs.center, radius=obs.radius,
+            source_path=obs.source_path)
+    end
+
+    # ═══════════════════════════════════════════════════════════════
+    #  Convenience: build a quick all-true Observation for testing
     # ═══════════════════════════════════════════════════════════════
 
     """

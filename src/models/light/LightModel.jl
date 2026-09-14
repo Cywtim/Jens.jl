@@ -1,5 +1,7 @@
 module LightModel
 
+    import Jens: JFloat
+
     # Core type hierarchy
     include("AbstractLight.jl")
 

@@ -46,9 +46,16 @@ module NFW
         return rho0
     end
 
-    # GPU-compatible: ifelse + generic types (no Float64 literals).
-    #  ifelse evaluates ALL branches, so we clamp sqrt/acosh/acos args
-    #  to safe domains within each unused branch.
+    # ── h(x): NFW lensing potential function ──
+    #  h(x) = ∫₀ˣ 2g(t)/t dt,  so that ψ = 2ρ₀Rs²h(x)  and  α = dψ/dR.
+    #
+    #  Closed form (Bartelmann 1996, eq 12; Golse & Kneib 2002):
+    #    x < 1:  h = ln²(x/2) − acosh²(1/x)
+    #    x > 1:  h = ln²(x/2) + acos²(1/x)
+    #    x = 1:  h = ln²(1/2)
+    #
+    #  Previously h() was an identical copy of g() (the deflection function),
+    #  making LensPotential return the deflection instead of the potential.
     function h(r_rs)
         T = typeof(r_rs)
         eps_t = T(1e-6)
@@ -57,22 +64,27 @@ module NFW
         one_t  = one(T)
         two_t  = T(2)
 
+        ln = log(r / two_t)
+
         lt1 = r < one_t
         eq1 = r == one_t
 
-        # a1 branch (r<1): clamp sqrt arg ≥0, acosh arg ≥1
-        sq1 = max(one_t - r^2, zero_t)
-        ac1 = max(one_t / r, one_t)
-        a1 = log(r / two_t) + one_t / sqrt(sq1) * acosh(ac1)
+        # x < 1 branch: h = ln^2 - acosh(1/x)^2
+        # clamp 1/x ≥ 1 for acosh domain, and 1-x^2 ≥ 0
+        inv_r_lt = max(one_t / r, one_t)
+        ac_lt = acosh(inv_r_lt)
+        h_lt = ln^2 - ac_lt^2
 
-        a2 = one_t + log(one_t / two_t)
+        # x = 1: h = ln(1/2)^2 = ln(0.5)^2
+        h_eq = ln^2   # ln = log(1/2) here
 
-        # a3 branch (r>1): clamp sqrt arg ≥0, acos arg ≤1
-        sq3 = max(r^2 - one_t, zero_t)
-        ac3 = min(one_t / r, one_t)
-        a3 = log(r / two_t) + one_t / sqrt(sq3) * acos(ac3)
+        # x > 1 branch: h = ln^2 + acos(1/x)^2
+        # clamp 1/x ≤ 1 for acos domain
+        inv_r_gt = min(one_t / r, one_t)
+        ac_gt = acos(inv_r_gt)
+        h_gt = ln^2 + ac_gt^2
 
-        return ifelse(lt1, a1, ifelse(eq1, a2, a3))
+        return ifelse(lt1, h_lt, ifelse(eq1, h_eq, h_gt))
     end
 
     function potential(R, Rs, rho0)
@@ -84,10 +96,12 @@ module NFW
     end
 
     function LensPotential(x, y; Rs, alpha_Rs, xcentre=0., ycentre=0.)
+        T = eltype(x)
         rho0 = alpha2rho0(alpha_Rs, Rs)
-        Rs = max(Rs, 1e-6)
-        xsh = @. x - xcentre
-        ysh = @. y - ycentre
+        Rs = max(Rs, T(1e-6))
+        xT = T(xcentre); yT = T(ycentre)
+        xsh = @. x - xT
+        ysh = @. y - yT
         R = @. sqrt(xsh^2 + ysh^2)
         f = potential(R, Rs, rho0)
         return f
@@ -131,11 +145,13 @@ module NFW
 
     function LensDerivative(x, y; Rs, alpha_Rs, xcentre=0., ycentre=0.)
 
+        T = eltype(x)
         rho0 = alpha2rho0(alpha_Rs, Rs)
-        Rs = max(Rs, 1e-6)
+        Rs = max(Rs, T(1e-6))
+        xT = T(xcentre); yT = T(ycentre)
 
-        xsh = @. x - xcentre
-        ysh = @. y - ycentre
+        xsh = @. x - xT
+        ysh = @. y - yT
         R = @. sqrt(xsh^2 + ysh^2)
 
         a = alpha(R, Rs, rho0)
@@ -146,10 +162,9 @@ module NFW
 
     end
 
-    function kappa(x, y, Rs, rho0, xcentre=0., ycentre=0.)
-        xsh = @. x - xcentre
-        ysh = @. y - ycentre
-        R = @. sqrt(xsh^2+ysh^2)
+    # kappa: expects already-shifted coordinates (x, y = xsh, ysh)
+    function kappa(x, y, Rs, rho0)
+        R = @. sqrt(x^2 + y^2)
         T = eltype(R)
         r_rs = @. R / Rs
         Fx = f.(r_rs)
@@ -159,7 +174,7 @@ module NFW
 
     function gamma(x, y, R, Rs, rho0)
         T = eltype(R)
-        c = T(1e-8)
+        c = ifelse(T === Float32, T(1e-6), T(1e-8))
         R = max.(R, c)
         r_rs = @. R / Rs
         gx = g.(r_rs)
@@ -171,14 +186,15 @@ module NFW
     end
 
     # GPU-compatible: ifelse + generic types + domain clamping.
-    #  r=0 is a removable singularity; handled via ε bump.
+    #  r=0 is a removable singularity; handled by ε bump.
+    #  ε must be > eps(T)/2 to avoid rounding 1-ε to 1 (atanh(1)=Inf).
     function f(r_rs)
         T = typeof(r_rs)
         zero_t  = zero(T)
         one_t   = one(T)
         two_t   = T(2)
         three_t = T(3)
-        eps_t   = T(1e-8)
+        eps_t   = ifelse(T === Float32, T(1e-6), T(1e-10))
 
         # Bump r=0 to eps_t to keep all branches well-defined
         r = ifelse(r_rs == zero_t, eps_t, r_rs)
@@ -206,11 +222,13 @@ module NFW
 
     function LensHessian(x, y; Rs, alpha_Rs, xcentre=0., ycentre=0.)
 
+        T = eltype(x)
         rho0 = alpha2rho0(alpha_Rs, Rs)
-        Rs = max(Rs, 1e-6)
+        Rs = max(Rs, T(1e-6))
+        xT = T(xcentre); yT = T(ycentre)
 
-        xsh = @. x - xcentre
-        ysh = @. y - ycentre
+        xsh = @. x - xT
+        ysh = @. y - yT
         R = @. sqrt(xsh^2 + ysh^2)
         # kappa — pass shifted coords directly (no double-shift)
         kappa0 = kappa(xsh, ysh, Rs, rho0)

@@ -1,3 +1,15 @@
 {
-    "julia.environmentPath": "/home/cyan/.julia/environments/v1.12"
+    "julia.environmentPath": "/home/cyan/.julia/environments/v1.12",
+
+    "acp.agents": {
+        "Hermes Agent": {
+            "command": "/home/cyan/anaconda3/envs/julia_env/bin/hermes",
+            "args": ["acp", "--profile", "lens-bot"],
+            "env": {
+                "HTTP_PROXY": "",
+                "HTTPS_PROXY": "",
+                "NO_PROXY": "*"
+            }
+        }
+    },
 }

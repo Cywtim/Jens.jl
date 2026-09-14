@@ -31,16 +31,15 @@ module ExponentialLight
           amp::Real=1., Rsersic::Real=0.5,
          xcentre::Real=0., ycentre::Real=0., bmin=1e-4)
 
-        #=
-        I(R) = amp \exp \left[ -b_n (R/R_{Sersic})^{\frac{1}{n}}\right]
-        where $b_n \approx 1.999n-0.327$
-        =#
+        T = promote_type(eltype(x), eltype(y))
+        ampT = T(amp)
+        b = max(T(1.999 - 0.327), T(bmin))
+        RsersicT = T(Rsersic)
+        xT = T(xcentre); yT = T(ycentre)
 
-        b = max(1.999  - 0.327, bmin)
+        R = @. sqrt((x - xT)^2 + (y - yT)^2)
 
-        R = @. sqrt((x - xcentre)^2 + (y - ycentre)^2)
-
-        I = @. amp * exp( - b * ( R / Rsersic ))
+        I = @. ampT * exp( - b * ( R / RsersicT ))
 
         return I
 
@@ -49,17 +48,20 @@ module ExponentialLight
     function ExponentialElliptical(x::AbstractArray, y::AbstractArray;
           amp::Real=1., Rsersic::Real=0.5, varphi::Real=pi/3,
            q::Real=0.9, xcentre::Real=0., ycentre::Real=0., bmin::Real=1e-4)
-        
-        b = @. 2 - 1/3 + 4/(405 ) + 46/(25515) + 131/(1148175) - 2194697/(3069071775) # for n>0.36
-        b = max(b, bmin)
 
-        A = @. (x-xcentre) * cos(varphi) + (y-ycentre) * sin(varphi)
-        B = @. -(x-xcentre) * sin(varphi) + (y-ycentre) * cos(varphi)
-        R = @. sqrt(A^2 + (B / ( 1 - q ))^2)
+        T = promote_type(eltype(x), eltype(y))
+        ampT = T(amp)
+        b = max(T(2 - 1/3 + 4/405 + 46/25515 + 131/1148175 - 2194697/3069071775), T(bmin))
+        RsersicT = T(Rsersic)
+        xT = T(xcentre); yT = T(ycentre)
 
-        I = @. amp * exp( -b * ((R/Rsersic) - 1))
+        A = @. (x - xT) * cos(varphi) + (y - yT) * sin(varphi)
+        B = @. -(x - xT) * sin(varphi) + (y - yT) * cos(varphi)
+        R = @. sqrt(A^2 + (B / q)^2)
 
-        return I 
+        I = @. ampT * exp( -b * ((R/RsersicT) - 1))
+
+        return I
     end
     
 

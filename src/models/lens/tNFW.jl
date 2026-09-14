@@ -83,16 +83,17 @@ module tNFW
         R_grid::V
         alpha_grid::V
         kappa_grid::V
+        psi_grid::V      # potential ψ(R) = ∫α(R')dR', precomputed once
     end
 
     function tNFWLens(; Rs::Real, alpha_Rs::Real, r_t::Real,
                        xcentre::Real=0.0, ycentre::Real=0.0,
                        n_radial::Int=300)
-        R_grid, alpha_grid, kappa_grid =
+        R_grid, alpha_grid, kappa_grid, psi_grid =
             _precompute(Float64(Rs), Float64(alpha_Rs), Float64(r_t), n_radial)
         return tNFWLens(Float64(Rs), Float64(alpha_Rs), Float64(r_t),
                         Float64(xcentre), Float64(ycentre),
-                        R_grid, alpha_grid, kappa_grid)
+                        R_grid, alpha_grid, kappa_grid, psi_grid)
     end
 
     function lens_check(lens::tNFWLens; kwargs...)
@@ -167,7 +168,16 @@ module tNFW
             alpha_grid[i] = 2.0 * cum / R_grid[i]
         end
 
-        return R_grid, alpha_grid, kappa_grid
+        # ── ψ(R) = ∫ α(R') dR' — cumulative trapezoidal, precomputed once ──
+        psi_grid = Vector{Float64}(undef, n)
+        psi_grid[1] = 0.0
+        for i in 2:n
+            dR = R_grid[i] - R_grid[i-1]
+            psi_grid[i] = psi_grid[i-1] +
+                0.5 * (alpha_grid[i] + alpha_grid[i-1]) * dR
+        end
+
+        return R_grid, alpha_grid, kappa_grid, psi_grid
     end
 
     function _compute_Sigma_at(R::Float64, Rs::Float64, rho0::Float64, r_t_eff::Float64)
@@ -266,13 +276,9 @@ module tNFW
         sincos = @. sin_phi * cos_phi
 
         # Cartesian Hessian from κ, γ
-        # γ = κ̄ − κ,  κ̄ ≈ α/R  (exact: κ̄ = α/(2R)... no, κ̄ = M/(πR²Σcrit))
-        # For axisymmetric lens: f_xx = κ + γ cos2φ, etc.
-        # Using: γ = alpha_over_R - kappa  (since κ̄(<R) = α/R for axisymmetric)
+        # γ = κ̄ − κ,  κ̄ = α/R  (axisymmetric: mean convergence inside R)
         gamma = @. alpha_over_R - kappa
 
-        f_xx = @. kappa + gamma * (cos2 - sin2 + cos2)  # simplify: κ + γ cos(2φ)
-        # Actually: f_xx = κ + γ·cos(2φ),  f_yy = κ − γ·cos(2φ),  f_xy = γ·sin(2φ)
         cos2phi = @. cos2 - sin2
         sin2phi = @. 2 * sincos
 
@@ -289,17 +295,8 @@ module tNFW
         T = promote_type(eltype(x), Float32)
         R = @. max(sqrt(xsh^2 + ysh^2), eps(T))
 
-        # ψ(R) = ∫ α(R') dR' — cumulative trapezoidal
-        # We precompute this from alpha_grid
-        # Simple: use the precomputed alpha to integrate
-        psi_vals = similar(lens.alpha_grid)
-        psi_vals[1] = 0.0
-        for i in 2:length(lens.R_grid)
-            dR = lens.R_grid[i] - lens.R_grid[i-1]
-            psi_vals[i] = psi_vals[i-1] +
-                0.5 * (lens.alpha_grid[i] + lens.alpha_grid[i-1]) * dR
-        end
-        return _interp1_vec(R, lens.R_grid, psi_vals)
+        # ψ(R) from precomputed grid — no per-call integration
+        return _interp1_vec(R, lens.R_grid, lens.psi_grid)
     end
 
 end # module tNFW

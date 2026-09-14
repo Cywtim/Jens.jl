@@ -53,11 +53,17 @@ module GaussianLight
     function GaussianSphere(x::AbstractArray, y::AbstractArray;
           amp::Real, sigma::Real, xcentre::Real=0.0, ycentre::Real=0.0)
 
-        I = amp ./ (2 .* pi .* sigma .^ 2)
-        R = (x .- xcentre) .^ 2 ./ sigma .^ 2 .+ (y .- ycentre) .^ 2 ./ sigma .^ 2
-        
-        return I .* exp.( .- R ./ 2.0)
-        
+        T = promote_type(eltype(x), eltype(y))
+        ampT = T(amp)
+        sigmaT = T(sigma)
+        twoT = T(2)
+        xT = T(xcentre); yT = T(ycentre)
+
+        I = ampT ./ (twoT .* T(pi) .* sigmaT .^ 2)
+        R = (x .- xT) .^ 2 ./ sigmaT .^ 2 .+ (y .- yT) .^ 2 ./ sigmaT .^ 2
+
+        return I .* exp.( .- R ./ twoT)
+
     end
 
     function GaussianEllipse(x::AbstractArray, y::AbstractArray;

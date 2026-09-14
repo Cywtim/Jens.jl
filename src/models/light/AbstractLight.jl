@@ -52,13 +52,13 @@ end
 # ═══════════════════════════════════════════════════════════════
 
 struct PointImage <: AbstractLight
-    flux::Float64
-    beta_x::Float64
-    beta_y::Float64
+    flux::JFloat
+    beta_x::JFloat
+    beta_y::JFloat
 end
 
 function PointImage(; flux::Real=1.0, beta_x::Real=0.0, beta_y::Real=0.0)
-    return PointImage(float(flux), float(beta_x), float(beta_y))
+    return PointImage(JFloat(flux), JFloat(beta_x), JFloat(beta_y))
 end
 
 
@@ -87,15 +87,15 @@ end
 # ═══════════════════════════════════════════════════════════════
 
 struct PointImages{T<:Real} <: AbstractLight
-    components::Vector{Tuple{T, Vector{Tuple{Float64, Float64}}}}
+    components::Vector{Tuple{T, Vector{Tuple{JFloat, JFloat}}}}
     intrinsic::Bool
 end
 
 function PointImages(components::Tuple...; intrinsic::Bool=false)
     T = typeof(components[1][1])   # infer type from first amp
-    groups = Vector{Tuple{T, Vector{Tuple{Float64, Float64}}}}()
+    groups = Vector{Tuple{T, Vector{Tuple{JFloat, JFloat}}}}()
     for (amp, positions) in components
-        push!(groups, (amp, [(Float64(x), Float64(y)) for (x, y) in positions]))
+        push!(groups, (amp, [(JFloat(x), JFloat(y)) for (x, y) in positions]))
     end
     return PointImages{T}(groups, intrinsic)
 end

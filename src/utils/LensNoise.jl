@@ -20,6 +20,7 @@
 module LensNoise
 
 using Statistics, Random, Distributions
+import Jens: JFloat
 
 export GaussNoise, PoissNoise, GaussPoissNoise, LensNoise
 export GaussianNoise, PoissonNoise, BackgroundNoise
@@ -43,9 +44,9 @@ Homoskedastic Gaussian noise with standard deviation `σ`.
 """
 struct GaussNoise{T<:Real} <: LensNoise
     σ::T
-    # Inner constructor: auto-promote to Float64
+    # Inner constructor: use JFloat (Float32 by default, Float64 if user switches)
     function GaussNoise(σ::Real)
-        return new{Float64}(Float64(σ))
+        return new{JFloat}(JFloat(σ))
     end
 end
 
@@ -63,9 +64,9 @@ use true Poisson noise via `Distributions.Poisson` instead.
 """
 struct PoissNoise{T<:Real} <: LensNoise
     exp_time::T
-    # Inner constructor: auto-promote to Float64
+    # Inner constructor: use JFloat
     function PoissNoise(exp_time::Real)
-        return new{Float64}(Float64(exp_time))
+        return new{JFloat}(JFloat(exp_time))
     end
 end
 
@@ -90,7 +91,7 @@ struct GaussPoissNoise{T<:Real} <: LensNoise
     sigma_gauss::T  # Gaussian component σ [same units as data, e.g. e⁻/s]
     exp_time::T     # exposure time [s]
     function GaussPoissNoise(sigma_gauss::Real, exp_time::Real)
-        return new{Float64}(Float64(sigma_gauss), Float64(exp_time))
+        return new{JFloat}(JFloat(sigma_gauss), JFloat(exp_time))
     end
 end
 
@@ -212,12 +213,13 @@ without knowing the noise model internals.
 """
 function per_pixel_variance(model::AbstractArray, gn::GaussNoise)
     T = eltype(model)
-    return fill(T(gn.σ^2), size(model))
+    return similar(model, T) .= T(gn.σ^2)
 end
 
 function per_pixel_variance(model::AbstractArray, pn::PoissNoise)
-    inv_t = 1 / pn.exp_time
-    return @. max(abs(model) * inv_t, eltype(model)(1e-20))
+    T = eltype(model)
+    inv_t = T(1) / T(pn.exp_time)
+    return @. max(abs(model) * inv_t, T(1e-20))
 end
 
 function per_pixel_variance(model::AbstractArray, np::GaussPoissNoise)
@@ -431,12 +433,17 @@ end
 
 function _randn_like(image::AbstractArray{T}) where T
     if image isa Array
-        return randn(Float64, size(image))
+        return randn(T, size(image))
     else
-        # GPU path: generate on CPU, transfer to device
-        noise_cpu = randn(Float64, size(image))
-        noise_dev = similar(image, Float64)
-        copyto!(noise_dev, noise_cpu)
+        # GPU path: match the image's element type (Float32 by default)
+        noise_dev = similar(image, T)
+        if T === Float64
+            copyto!(noise_dev, randn(T, size(image)))
+        else
+            # For Float32, generate in T directly to avoid promotion to Float64
+            noise_cpu = randn(T, size(image))
+            copyto!(noise_dev, noise_cpu)
+        end
         return noise_dev
     end
 end

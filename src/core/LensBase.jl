@@ -174,7 +174,19 @@ module LensBase
         end
     end
 
+    # ── LensCheck — DEPRECATED ───────────────────────────────
+    #  LensCheck is no longer maintained and not recommended for use.
+    #  The per-model LensCheck functions use lexicographic vector
+    #  comparison (Julia's `[a,b] .< [c,d]` returns a single Bool,
+    #  not element-wise) which silently passes invalid parameters.
+    #  Users should validate parameters via prior bounds in their
+    #  sampler or manual checks instead.
     function LensCheck(LensModel; LensKwargs=Dict(), z_source=nothing)
+        Base.depwarn(
+            "`LensCheck` is no longer maintained and not recommended. " *
+            "Its parameter validation is unreliable due to a known bug " *
+            "in lexicographic comparison. Validate parameters via prior " *
+            "bounds in your sampler or manual checks instead.", :LensCheck)
         lens_check(LensModel; z_source=z_source, LensKwargs...)
     end
 

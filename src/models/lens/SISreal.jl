@@ -49,38 +49,34 @@ module SISreal
 
 
     function LensDerivative(xg::AbstractArray, yg::AbstractArray;
-         theta_E::Real, xcentre::Real=0., ycentre::Real=0.)
+     theta_E::Real, xcentre::Real=0., ycentre::Real=0.)
 
         xsh = xg .- xcentre
         ysh = yg .- ycentre
 
-        R = sqrt.( xsh.^2 .+ ysh.^2 )
-        a = zeros(size(R))
-        r = R[R.>0.]  # in the SIS regime
-        a[R.==0.] .= 0
-        a[R.>0.] .= theta_E ./ r
+        R = @. sqrt(xsh^2 + ysh^2)
+        T = promote_type(eltype(R), typeof(theta_E))
+        a = @. ifelse(R > 0, theta_E / R, zero(T))
 
-        f_x = a .* xsh
-        f_y = a .* ysh
+        f_x = @. a * xsh
+        f_y = @. a * ysh
 
         return f_x, f_y
     end
 
     function LensHessian(xg::AbstractArray, yg::AbstractArray;
-         theta_E::Real, xcentre::Real=0., ycentre::Real=0.)
+     theta_E::Real, xcentre::Real=0., ycentre::Real=0.)
 
-        xsh = xg - xcentre
-        ysh = yg - ycentre
+        xsh = @. xg - xcentre
+        ysh = @. yg - ycentre
 
-        R .= sqrt.( xsh.^2 .+ ysh.^2 ).^(3.0/2)
-        h = zeros(size(R))
-        r = R[R.>0.]  # in the SIS regime
-        h[R.==0.] .= 0
-        h[R.>0.] .= theta_E ./ r
+        R3 = @. (xsh^2 + ysh^2)^1.5   # R^3 = (x^2+y^2)^(3/2)
+        T = promote_type(eltype(R3), typeof(theta_E))
+        h = @. ifelse(R3 > 0, theta_E / R3, zero(T))
 
-        f_xx = ysh .* ysh .* h
-        f_yy = xsh .* xsh .* h
-        f_xy = -xsh .* ysh .* h
+        f_xx = @. ysh * ysh * h
+        f_yy = @. xsh * xsh * h
+        f_xy = @. -xsh * ysh * h
         return f_xx, f_xy, f_yy
 
     end

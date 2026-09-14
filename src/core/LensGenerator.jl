@@ -42,13 +42,19 @@ module LensGenerator
 
     struct LensedPlane{L, C<:Cosmology.AbstractCosmology} <: AbstractLens
         lens::L
-        z_lens::Float64
+        z_lens::JFloat
         cosmology::C
     end
 
-    function LensedPlane(lens; z_lens::Float64,
+    function LensedPlane(lens; z_lens::Real,
                          cosmology::Cosmology.AbstractCosmology)
-        return LensedPlane(lens, z_lens, cosmology)
+        if lens isa Module
+            @warn "LensedPlane received a raw Module ($(nameof(lens))). " *
+                  "For render()/ForwardModel, use SingleModel($(nameof(lens)); ...) " *
+                  "or CombinedLens($(nameof(lens)) => (...)) so parameters are baked in. " *
+                  "Direct lens_derivative calls with explicit kwargs are unaffected."
+        end
+        return LensedPlane(lens, JFloat(z_lens), cosmology)
     end
 
     function lens_derivative(lp::LensedPlane, x, y; z_source=nothing, kwargs...)
@@ -58,7 +64,9 @@ module LensGenerator
         ratio = lens_distance_ratio(lp.cosmology, lp.z_lens, float(z_source))
         ratio_T = eltype(x)(ratio)
         aphys_x, aphys_y = lens_derivative(lp.lens, x, y; kwargs...)
-        return aphys_x .* ratio_T, aphys_y .* ratio_T
+        @. aphys_x *= ratio_T
+        @. aphys_y *= ratio_T
+        return aphys_x, aphys_y
     end
 
     function lens_hessian(lp::LensedPlane, x, y; z_source=nothing, kwargs...)
@@ -68,7 +76,10 @@ module LensGenerator
         ratio = lens_distance_ratio(lp.cosmology, lp.z_lens, float(z_source))
         ratio_T = eltype(x)(ratio)
         fxx, fxy, fyy = lens_hessian(lp.lens, x, y; kwargs...)
-        return fxx .* ratio_T, fxy .* ratio_T, fyy .* ratio_T
+        @. fxx *= ratio_T
+        @. fxy *= ratio_T
+        @. fyy *= ratio_T
+        return fxx, fxy, fyy
     end
 
     function lens_potential(lp::LensedPlane, x, y; z_source=nothing, kwargs...)
@@ -78,7 +89,8 @@ module LensGenerator
         ratio = lens_distance_ratio(lp.cosmology, lp.z_lens, float(z_source))
         ratio_T = eltype(x)(ratio)
         psi = lens_potential(lp.lens, x, y; kwargs...)
-        return psi .* ratio_T
+        @. psi *= ratio_T
+        return psi
     end
 
     function lens_check(lp::LensedPlane; kwargs...)
@@ -101,11 +113,11 @@ module LensGenerator
 
     struct LightPlane{L<:AbstractLight}
         light::L
-        z::Float64
+        z::JFloat
     end
 
     function LightPlane(light::AbstractLight; z::Real)
-        return LightPlane(light, float(z))
+        return LightPlane(light, JFloat(z))
     end
 
     # ==============================================================
@@ -176,19 +188,19 @@ module LensGenerator
     # ==============================================================
     struct MultiLensedPlane{P<:Tuple, C<:Cosmology.AbstractCosmology} <: AbstractLens
         planes::P          # each element: (lens, z, kwargs::NamedTuple)
-        z_source::Float32
+        z_source::JFloat
         cosmology::C
     end
 
     # Keyword constructor: normalizes (lens, z) → (lens, z, NamedTuple())
-    function MultiLensedPlane(planes::Tuple; z_source::Float64,
+    function MultiLensedPlane(planes::Tuple; z_source::Real,
                               cosmology::Cosmology.AbstractCosmology)
         # Normalize each plane to (lens, z, kwargs) 3-tuple
         _normalized = Tuple(
             length(p) == 2 ? (p[1], p[2], NamedTuple()) : p
             for p in planes
         )
-        return MultiLensedPlane(_normalized, Float32(z_source), cosmology)
+        return MultiLensedPlane(_normalized, JFloat(z_source), cosmology)
     end
 
     # ── Internal: extract per-plane kwargs, merge with shared kwargs ──
@@ -335,10 +347,11 @@ module LensGenerator
     end
 
     function GenGrid(; pix_n::Int=256, pix_size::Real=JFloat(0.09))
-        T = typeof(pix_size)
-        half = T(div(pix_n, 2) * pix_size)
+        T = JFloat
+        ps = T(pix_size)
+        half = T(div(pix_n, 2) * ps)
         xg, yg = LensGrid(; xl=half, nx=pix_n + 1)
-        return Grid(pix_n, T(pix_size), xg, yg)
+        return Grid(pix_n, ps, xg, yg)
     end
 
     # ═══════════════════════════════════════════════════════════════

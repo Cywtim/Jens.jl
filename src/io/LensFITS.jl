@@ -512,8 +512,8 @@ module LensFITS
         overwrite && isfile(path) && rm(path; force=true)
 
         FITS(path, "w") do f
-            # Write data as Float32 (matches JFloat)
-            data_out = Float32.(image)
+            # Write data matching global precision (JFloat)
+            data_out = JFloat.(image)
             write(f, data_out)
             hdu = f[1]
 
@@ -572,14 +572,14 @@ module LensFITS
         else
             # Multi-HDU: model (ext 1) + residual (ext 2)
             FITS(path, "w") do f
-                write(f, Float32.(model))
+                write(f, JFloat.(model))
                 hdu1 = f[1]
                 for (key, val) in out_header
                     try write_key(hdu1, string(key), val) catch; end
                 end
 
                 # Extension: residual
-                res_out = Float32.(residual)
+                res_out = JFloat.(residual)
                 write(f, res_out)
                 hdu2 = f[2]
                 try write_key(hdu2, "EXTNAME", "RESIDUAL") catch; end

@@ -171,10 +171,11 @@ module LensUtils
     Ellipticity moduli → (axis ratio q, position angle phi in rad).
     """
     function e2phiq(e1, e2)
-        phi = @. atan(e2, e1) / 2
-        e = @. sqrt(e1^2 + e2^2)
-        e = min.(e, 0.9999)
-        q = @. (1 - e) / (1 + e)
+        T = promote_type(typeof(e1), typeof(e2))
+        phi = atan(e2, e1) / T(2)
+        e = sqrt(e1^2 + e2^2)
+        e = min(e, T(0.9999))
+        q = (T(1) - e) / (T(1) + e)
         return q, phi
     end
 

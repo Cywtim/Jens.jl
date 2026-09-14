@@ -34,6 +34,7 @@ module Jens
     #  I/O  (after Observation so LensFITS can produce Observation)
     # ═══════════════════════════════════════════════════════════════
     include("io/LensFITS.jl")
+    include("io/LensFITSIO.jl")
 
     # ═══════════════════════════════════════════════════════════════
     #  System
@@ -70,6 +71,7 @@ module Jens
     export LensUtils, LensBase
     export LensGenerator, LensCosmo, LensConstants, LensLOS, LensSolver, LensNoise, LensPSF, LensMask, LensObservation, WFC3
     export LensFITS
+    export LensFITSIO
     export LensSystem
     export LensTimeDelay, image_time_delays
     export LensPointLikelihood, LensAdaptiveGrid, LensShapelet

@@ -250,10 +250,17 @@ module LensSystem
 
     function _render_light(sys::ForwardModel, src::ExtendedSource, z_src; solver::Symbol=:nlsolve)
         xg, yg = sys.grid.xg, sys.grid.yg
+        # Source at or in front of the lens plane → no ray-tracing
+        if z_src <= get_z_lens(sys.lens_plane)
+            result = evaluate_source(src, xg, yg)
+            return _apply_psf(sys, result)
+        end
+        # Background source → ray-trace through lens
         ax, ay = lens_derivative(sys.lens_plane, xg, yg; z_source=z_src)
-        betax = xg .- ax
-        betay = yg .- ay
-        result = evaluate_source(src, betax, betay)
+        # Reuse ax, ay as beta (no external references to them)
+        @. ax = xg - ax
+        @. ay = yg - ay
+        result = evaluate_source(src, ax, ay)
         return _apply_psf(sys, result)
     end
 
@@ -360,7 +367,9 @@ module LensSystem
         function _compute_magnifications(sys::ForwardModel, positions, z_src)
             mus = Real[]
             for (x, y) in positions
-                fxx, fxy, fyy = lens_hessian(sys, [x], [y]; z_source=z_src)
+                # Promote to Float64: lens_hessian is a 2nd derivative,
+                # Float32 coordinates produce catastrophically wrong detA.
+                fxx, fxy, fyy = lens_hessian(sys, Float64.([x]), Float64.([y]); z_source=z_src)
                 detA = (1 - fxx[1]) * (1 - fyy[1]) - fxy[1]^2
                 push!(mus, 1 / abs(detA))
             end
@@ -418,15 +427,17 @@ module LensSystem
     """
     function masked_chi2(sys::ForwardModel, data, σ²::Real, mask)
         model = render(sys)
-        diff² = (data .- model).^2
         T = eltype(data)
-        return sum(diff² .* mask) / T(σ²)
+        # Fused: reuse model array as diff², then multiply by mask in one pass
+        @. model = ((data - model)^2) * mask
+        return sum(model) / T(σ²)
     end
 
     function masked_chi2(sys::ForwardModel, data, σ²::Real, ::Nothing)
         model = render(sys)
-        diff² = (data .- model).^2
-        return sum(diff²) / eltype(data)(σ²)
+        T = eltype(data)
+        @. model = (data - model)^2
+        return sum(model) / T(σ²)
     end
 
     # ── One-argument-less: read mask from sys.mask ──
@@ -448,16 +459,17 @@ module LensSystem
 
     function masked_chi2(sys::ForwardModel, data, noise::LensNoise, mask)
         model = render(sys)
-        diff² = (data .- model).^2
         var = per_pixel_variance(model, noise)
-        return sum((diff² .* mask) ./ var)
+        # Fused: reuse model as (data-model)^2, then divide by var and multiply mask
+        @. model = ((data - model)^2) * mask / var
+        return sum(model)
     end
 
     function masked_chi2(sys::ForwardModel, data, noise::LensNoise, ::Nothing)
         model = render(sys)
-        diff² = (data .- model).^2
         var = per_pixel_variance(model, noise)
-        return sum(diff² ./ var)
+        @. model = (data - model)^2 / var
+        return sum(model)
     end
 
     function masked_chi2(sys::ForwardModel, data, noise::LensNoise)

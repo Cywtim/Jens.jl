@@ -65,22 +65,18 @@ module MGE
     end
 
     function _circgauss_potential(x, y, kappa0::Real, sigma::Real)
+        T = promote_type(eltype(x), eltype(y), typeof(kappa0), typeof(sigma))
+        k0 = T(kappa0); sig = T(sigma); sig2 = sig^2
         R2 = @. x^2 + y^2
-        sigma2 = sigma^2
-        # potential = kappa0 * sigma^2 * (Ei(-R^2/(2*sigma^2)) - log(R^2/(2*sigma^2)) - gamma)
-        # Use integral form for numerical stability
-        # Phi(R) = integral_0^R alpha(r) dr + constant
-        # For convenience, return relative potential (not used for deflection/hessian)
-        small = R2 .< 1e-20
-        safe_R2 = copy(R2)
-        safe_R2[small] .= sigma2
-
-        # Use exponential integral E1 approximation
-        arg = @. safe_R2 / (2.0 * sigma2)
-        # E1(x) ≈ -log(x) - EulerGamma for small x; use series for stability
-        E1_approx = @. -log(arg) - MathConstants.eulergamma + arg - arg^2/4.0 + arg^3/18.0
-        pot = @. kappa0 * sigma2 * (E1_approx - log(arg) - MathConstants.eulergamma)
-        pot[small] .= 0.0
+        # Guard R2=0: use ifelse instead of boolean indexing for GPU safety
+        safe_R2 = @. ifelse(R2 < T(1e-20), sig2, R2)
+        arg = @. safe_R2 / (T(2) * sig2)
+        # E1(x) ≈ -log(x) - EulerGamma + x - x^2/4 + x^3/18 for small x
+        euler = T(MathConstants.eulergamma)
+        E1_approx = @. -log(arg) - euler + arg - arg^2 / T(4) + arg^3 / T(18)
+        pot = @. k0 * sig2 * (E1_approx - log(arg) - euler)
+        # At R2=0, potential is 0
+        pot = @. ifelse(R2 < T(1e-20), zero(T), pot)
         return pot
     end
 
