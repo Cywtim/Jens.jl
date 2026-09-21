@@ -45,6 +45,7 @@ module Jens
     include("utils/LensPointLikelihood.jl")  # point-source χ² (images + delays)
     include("utils/LensAdaptiveGrid.jl")     # adaptive sub-sampling near caustics
     include("models/light/LensShapelet.jl")  # shapelet-basis source reconstruction
+    include("utils/LensMeshRefine.jl")       # quad-tree adaptive grid (mass & source)
 
     # ═══════════════════════════════════════════════════════════════
     #  Models
@@ -74,7 +75,7 @@ module Jens
     export LensFITSIO
     export LensSystem
     export LensTimeDelay, image_time_delays
-    export LensPointLikelihood, LensAdaptiveGrid, LensShapelet
+    export LensPointLikelihood, LensAdaptiveGrid, LensShapelet, LensMeshRefine
     export LensModel, LightModel
     export LensPlots
     export LensTuring, LensMH, LensHMC, LensSample, LensPSO
