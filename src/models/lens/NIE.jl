@@ -41,7 +41,9 @@ module NIE
         b = @. theta_E * sqrt((1 + q^2) / 2)
         s = @. s_scale * sqrt((1 + q^2) / (2*q^2))
         q = min.(q, 0.9999)
-        return Dict(:b=>b, :s=>s, :q=>q, :varphi=>varphi)
+        # NamedTuple instead of Dict: type-stable, GPU-safe in the hot path,
+        # and splats identically as keyword args (para_ma...).
+        return (b=b, s=s, q=q, varphi=varphi)
     end
 
     function LensPotential(xg::AbstractArray, yg::AbstractArray;

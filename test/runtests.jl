@@ -255,6 +255,38 @@ end
 end
 
 # ═══════════════════════════════════════════════════════════════
+#  3b. Hessian — adaptive central-difference vs small explicit step
+#      Guards the GPU-safe adaptive-step rewrite of SIE / NIEkappa.
+# ═══════════════════════════════════════════════════════════════
+@testset "Hessian adaptive step consistency" begin
+    xh = [1.2, 0.5, -0.4]
+    yh = [0.3, -0.7, 1.1]
+
+    # SIE: adaptive step (default) must match a small fixed central diff
+    a_xx, a_xy, a_yy = SIE.LensHessian(xh, yh;
+                        theta_E=1.0, e1=0.1, e2=0.0, xcentre=0., ycentre=0.)
+    f_xx, f_xy, f_yy = SIE.LensHessian(xh, yh;
+                        theta_E=1.0, e1=0.1, e2=0.0, xcentre=0., ycentre=0.,
+                        diff=1e-6)
+    @test all(isfinite, [a_xx; a_xy; a_yy])
+    @test all(isapprox.(a_xx, f_xx; rtol=1e-4))
+    @test all(isapprox.(a_yy, f_yy; rtol=1e-4))
+    @test all(isapprox.(a_xy, f_xy; atol=1e-4))
+
+    # NIE (NamedTuple path from Main2MajorAxes) — finite, self-consistent
+    n_xx, n_xy, n_yy = NIE.LensHessian(xh, yh;
+                        theta_E=1.0, s_scale=0.1, e1=0.1, e2=-0.05,
+                        xcentre=0., ycentre=0.)
+    @test all(isfinite, [n_xx; n_xy; n_yy])
+
+    # NIEkappa direct — finite
+    k_xx, k_xy, k_yy = NIEkappa.LensHessian(xh, yh;
+                        b=1.0, s=0.1, q=0.8, varphi=0.3, xcentre=0., ycentre=0.)
+    @test all(isfinite, [k_xx; k_xy; k_yy])
+    # Consistency with the SIS limit: NIS/NIE core s→0 recovers fine values
+end
+
+# ═══════════════════════════════════════════════════════════════
 #  4. LensPSF
 # ═══════════════════════════════════════════════════════════════
 @testset "LensPSF" begin

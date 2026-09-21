@@ -103,13 +103,22 @@ module SIE
     function LensHessian(xg::AbstractArray, yg::AbstractArray;
              theta_E::Real, e1::Real, e2::Real,
              s::Real=1e-4, xcentre::Real=0., ycentre::Real=0.,
-             diff::Real=1e-10)
+             diff::Real=0.0)
         #=
-            Hessian of the lensing potential for SIE (finite-difference).
+            Hessian of the lensing potential for SIE (central finite-difference).
 
-            Computes f_xx, f_xy, f_yy via finite difference of deflection
+            Computes f_xx, f_xy, f_yy by central-differencing the deflection
             in the major-axis frame, then rotates back using the spin-2
             transformation for shear.
+
+            `diff`: explicit step size.  Default 0.0 → adaptive step
+            `h = cbrt(eps(T))·(1 + |coord|)`, which is the O(h²)-optimal
+            central-difference step and avoids roundoff dominance.  Fully
+            broadcast (no scalar indexing) → CuArray-safe.
+
+            NOTE: the physical singular behaviour at q → 1 (b/√(1−q²)
+            diverges in the prefactor) is unchanged; the min(q, 0.9999)
+            clamp in `_to_major_axes` still bounds it.
         =#
         b, q, varphi = _to_major_axes(theta_E, e1, e2)
 
@@ -118,14 +127,23 @@ module SIE
         ysh = yg .- ycentre
         xsh, ysh = LensUtils.LensRotation(xsh, ysh, -varphi)
 
-        # Hessian in major-axis frame via finite difference of deflection
-        f_x, f_y, _   = _deflection_ma(xsh, ysh; b=b, q=q, s=s)
-        f_x_dx, _, _  = _deflection_ma(xsh .+ diff, ysh; b=b, q=q, s=s)
-        f_x_dy, f_y_dy, _ = _deflection_ma(xsh, ysh .+ diff; b=b, q=q, s=s)
+        T = promote_type(eltype(xsh), eltype(ysh), typeof(b), typeof(q), typeof(s))
+        # base step: explicit `diff` if given, else adaptive O(h²)-optimal
+        h0 = diff > 0 ? T(diff) : cbrt(eps(real(T)))
+        hx = @. h0 * (one(T) + abs(xsh))
+        hy = @. h0 * (one(T) + abs(ysh))
 
-        f_xx = (f_x_dx .- f_x) ./ diff
-        f_xy = (f_x_dy .- f_x) ./ diff
-        f_yy = (f_y_dy .- f_y) ./ diff
+        # Central differences of the deflection (O(h²) accurate).
+        fx_xm, _, _     = _deflection_ma(xsh .- hx, ysh; b=b, q=q, s=s)
+        fx_xp, _, _     = _deflection_ma(xsh .+ hx, ysh; b=b, q=q, s=s)
+        fx_ym, fy_ym, _ = _deflection_ma(xsh, ysh .- hy; b=b, q=q, s=s)
+        fx_yp, fy_yp, _ = _deflection_ma(xsh, ysh .+ hy; b=b, q=q, s=s)
+
+        two_hx = @. T(2) * hx
+        two_hy = @. T(2) * hy
+        f_xx = @. (fx_xp - fx_xm) / two_hx
+        f_xy = @. (fx_yp - fx_ym) / two_hy   # ∂f_x/∂y = ∂f_y/∂x to O(h²)
+        f_yy = @. (fy_yp - fy_ym) / two_hy
 
         # rotate shear back to original frame (spin-2)
         kappa  = @. 0.5 * (f_xx + f_yy)

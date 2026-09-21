@@ -91,22 +91,31 @@ module NIEkappa
 
     function LensHessian(xg::AbstractArray, yg::AbstractArray;
           b::Real=1.5, s::Real=0.1, q::Real=0.8, varphi::Real=pi/6,
-             xcentre::Real=0., ycentre::Real=0., diff::Real= 1e-10)
+             xcentre::Real=0., ycentre::Real=0., diff::Real=0.0)
 
         # shift
         xsh = xg .- xcentre
         ysh = yg .- ycentre
         # rotate
-        xsh, ysh = LensUtils.LensRotation(xsh, ysh, -varphi) 
+        xsh, ysh = LensUtils.LensRotation(xsh, ysh, -varphi)
 
-        # hessian in major axis
-        f_x, f_y = LensDerivative(xsh, ysh; b=b, s=s, q=q, varphi=0.)
-        f_x_dx, _ = LensDerivative(xsh .+ diff, ysh;b=b, s=s, q=q, varphi=0.)
-        f_x_dy, f_y_dy = LensDerivative(xsh, ysh .+ diff; b=b, s=s, q=q, varphi=0.)
+        T = promote_type(eltype(xsh), eltype(ysh), typeof(b), typeof(s), typeof(q))
+        # Adaptive O(h²)-optimal central-difference step (or explicit `diff`).
+        h0 = diff > 0 ? T(diff) : cbrt(eps(real(T)))
+        hx = @. h0 * (one(T) + abs(xsh))
+        hy = @. h0 * (one(T) + abs(ysh))
 
-        f_xx = (f_x_dx .- f_x) ./ diff
-        f_xy = (f_x_dy .- f_x) ./ diff
-        f_yy = (f_y_dy .- f_y) ./ diff
+        # central differences of the deflection in the major-axis frame
+        fx_xm, _    = LensDerivative(xsh .- hx, ysh; b=b, s=s, q=q, varphi=0.)
+        fx_xp, _    = LensDerivative(xsh .+ hx, ysh; b=b, s=s, q=q, varphi=0.)
+        fx_ym, fy_ym = LensDerivative(xsh, ysh .- hy; b=b, s=s, q=q, varphi=0.)
+        fx_yp, fy_yp = LensDerivative(xsh, ysh .+ hy; b=b, s=s, q=q, varphi=0.)
+
+        two_hx = @. T(2) * hx
+        two_hy = @. T(2) * hy
+        f_xx = @. (fx_xp - fx_xm) / two_hx
+        f_xy = @. (fx_yp - fx_ym) / two_hy   # ∂f_x/∂y = ∂f_y/∂x to O(h²)
+        f_yy = @. (fy_yp - fy_ym) / two_hy
 
         # rotate back
         kappa = @.  1.0 / 2. * (f_xx + f_yy)
