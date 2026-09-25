@@ -32,27 +32,39 @@ export leaf_centers, leaf_areas, to_flat, bbox, fill_field
 # ═══════════════════════════════════════════════════════════════
 
 """
-    QuadLeaf(xmin, xmax, ymin, ymax, level; value=0.0, resid=Inf, n_obs=0)
+    QuadLeaf(xmin, xmax, ymin, ymax, level; value=0.0, gx=0.0, gy=0.0,
+             hxx=0.0, hxy=0.0, hyy=0.0, resid=Inf, n_obs=0)
 
 One leaf of the quad-tree: an axis-aligned box at refinement depth
-`level`, carrying a scalar `value` (e.g. κ or source brightness),
-a `resid` criterion used in `refine!`, and the number `n_obs` of
-constraining rays/images falling inside this leaf.
+`level`, carrying a scalar `value` (e.g. κ) plus a **P1/P2 Taylor
+expansion** about the leaf centre (x_c, y_c):
+    κ(x, y) ≈ value + gx·(x−x_c) + gy·(y−y_c)            (P1)
+            + hxx·(x−x_c)² + hxy·(x−x_c)(y−y_c) + hyy·(y−y_c)²   (P2)
+Also carries `resid` (subdivision criterion) and `n_obs` (number of
+constraining rays/images inside this box).
 """
 mutable struct QuadLeaf
     xmin::JFloat; xmax::JFloat
     ymin::JFloat; ymax::JFloat
     level::Int
-    value::JFloat       # scalar field value stored on the leaf
+    value::JFloat       # field value at leaf centre
+    gx::JFloat          # ∂field/∂x (P1 slope about centre)
+    gy::JFloat          # ∂field/∂y (P1 slope about centre)
+    hxx::JFloat         # P2 curvature terms
+    hxy::JFloat
+    hyy::JFloat
     resid::JFloat       # subdivision criterion (set by caller)
     n_obs::Int          # number of constraining observations in the box
 end
 
 function QuadLeaf(xmin::Real, xmax::Real, ymin::Real, ymax::Real,
-                  level::Int; value::Real=0.0, resid::Real=Inf,
-                  n_obs::Int=0)
+                  level::Int; value::Real=0.0, gx::Real=0.0, gy::Real=0.0,
+                  hxx::Real=0.0, hxy::Real=0.0, hyy::Real=0.0,
+                  resid::Real=Inf, n_obs::Int=0)
     return QuadLeaf(JFloat(xmin), JFloat(xmax), JFloat(ymin), JFloat(ymax),
-                    level, JFloat(value), JFloat(resid), Int(n_obs))
+                    level, JFloat(value), JFloat(gx), JFloat(gy),
+                    JFloat(hxx), JFloat(hxy), JFloat(hyy),
+                    JFloat(resid), Int(n_obs))
 end
 
 leaf_center_x(lf::QuadLeaf) = (lf.xmin + lf.xmax) / 2
@@ -124,10 +136,14 @@ function split_leaf(lf::QuadLeaf)
     ymid = (lf.ymin + lf.ymax) / 2
     lv = lf.level + 1
     return QuadLeaf[
-        QuadLeaf(lf.xmin, xmid, lf.ymin, ymid, lv; value=lf.value, resid=Inf, n_obs=lf.n_obs),  # NW
-        QuadLeaf(xmid, lf.xmax, lf.ymin, ymid, lv; value=lf.value, resid=Inf, n_obs=lf.n_obs),  # NE
-        QuadLeaf(lf.xmin, xmid, ymid, lf.ymax, lv; value=lf.value, resid=Inf, n_obs=lf.n_obs),  # SW
-        QuadLeaf(xmid, lf.xmax, ymid, lf.ymax, lv; value=lf.value, resid=Inf, n_obs=lf.n_obs),  # SE
+        QuadLeaf(lf.xmin, xmid, lf.ymin, ymid, lv; value=lf.value, gx=lf.gx, gy=lf.gy,
+                 hxx=lf.hxx, hxy=lf.hxy, hyy=lf.hyy, resid=Inf, n_obs=lf.n_obs),  # NW
+        QuadLeaf(xmid, lf.xmax, lf.ymin, ymid, lv; value=lf.value, gx=lf.gx, gy=lf.gy,
+                 hxx=lf.hxx, hxy=lf.hxy, hyy=lf.hyy, resid=Inf, n_obs=lf.n_obs),  # NE
+        QuadLeaf(lf.xmin, xmid, ymid, lf.ymax, lv; value=lf.value, gx=lf.gx, gy=lf.gy,
+                 hxx=lf.hxx, hxy=lf.hxy, hyy=lf.hyy, resid=Inf, n_obs=lf.n_obs),  # SW
+        QuadLeaf(xmid, lf.xmax, ymid, lf.ymax, lv; value=lf.value, gx=lf.gx, gy=lf.gy,
+                 hxx=lf.hxx, hxy=lf.hxy, hyy=lf.hyy, resid=Inf, n_obs=lf.n_obs),  # SE
     ]
 end
 

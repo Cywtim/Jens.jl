@@ -3,5 +3,6 @@
 *.jl.mem
 /docs/Manifest*.toml
 /docs/build/
+/docs/quadtree/
 .vscode/settings.json
 /.vscode

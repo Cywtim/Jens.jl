@@ -51,6 +51,8 @@ module Jens
     #  Models
     # ═══════════════════════════════════════════════════════════════
     include("models/lens/LensModel.jl")
+    include("models/lens/LensMassRecon.jl")  # quad-tree mass-field reconstruction
+    include("models/lens/QuadTreeFit.jl")    # image-plane fit w/ quadtree residual
 
     # ═══════════════════════════════════════════════════════════════
     #  Plotting
@@ -76,9 +78,32 @@ module Jens
     export LensSystem
     export LensTimeDelay, image_time_delays
     export LensPointLikelihood, LensAdaptiveGrid, LensShapelet, LensMeshRefine
-    export LensModel, LightModel
+    export LensModel, LightModel, LensMassRecon, QuadTreeFit
     export LensPlots
     export LensTuring, LensMH, LensHMC, LensSample, LensPSO
+
+    # ═══════════════════════════════════════════════════════════════
+    #  Quad-tree lens stack — semantic identity (Scheme A, no move)
+    #
+    #  The adaptive quad-tree lens is ONE coherent stack spread across
+    #  three modules (kept separate for dependency hygiene, not by
+    #  accident).  Entry points:
+    #
+    #    LensMeshRefine — bottom mesh: QuadLeaf / QuadTree (pure
+    #      adaptive-grid data structures; shared with source-plane mesh
+    #      work, NO lens semantics).
+    #    LensMassRecon  — the quad-tree LENS ENGINE (de-facto submodule):
+    #      MassField (adaptive κ field, P0/P1/P2, ROI-capped refine),
+    #      field_value/mass_*, quadtree_deflection (+multipole &
+    #      Barnes–Hut), quadtree_potential, quadtree_hessian,
+    #      QuadTreeLens <: AbstractLens.
+    #    QuadTreeFit    — image-plane fitness: quadtree_image_logp
+    #      (scheme 1b: analytic base + quadtree residual + BH render),
+    #      HybridQuadLens.
+    #
+    #  Typical flow: MeshRefine → LensMassRecon reconstructs κ/α/ψ/H
+    #  → QuadTreeFit plugs into an image-plane log-posterior for MCMC.
+    # ═══════════════════════════════════════════════════════════════
 
     # ═══════════════════════════════════════════════════════════════
     #  GPU convenience (filled by ext/JensCUDA.jl when CUDA loaded)
